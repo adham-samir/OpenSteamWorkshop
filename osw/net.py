@@ -98,6 +98,11 @@ class Http:
         if status in (301, 302, 303, 307, 308):
             loc = resp.getheader("Location") or ""
             self._conn = None
+            if not loc:
+                raise NetError(f"HTTP {status} redirect without location for {url!r}")
+            if loc.startswith("/"):
+                # same origin
+                loc = f"https://{host}{loc}"
             return self.request(loc, headers)
         if status != 200:
             if status == 429:

@@ -17,6 +17,7 @@ from .steam_api import (
     search_games,
 )
 from .steamcmd import SteamCMD, SteamCMDError
+from .net import NetError
 
 EXIT_OK = 0
 EXIT_ERR = 1
@@ -45,9 +46,14 @@ def cmd_browse(args) -> int:
     appid = int(args.appid)
     page = max(1, args.page)
     per = min(50, max(1, args.count))
-    items, total, pages = browse_workshop(
-        appid, page=page, per_page=per, sort=args.sort, search_text=" ".join(args.search or [])
-    )
+    try:
+        items, total, pages = browse_workshop(
+            appid, page=page, per_page=per, sort=args.sort,
+            search_text=" ".join(args.search or []),
+        )
+    except NetError as e:
+        _p(f"Could not browse app {appid}: {e}")
+        return EXIT_ERR
     if not items:
         _p(f"No workshop items found (app {appid}, page {page}).")
         return EXIT_ERR

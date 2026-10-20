@@ -59,6 +59,9 @@ unless you explicitly opt in.
   with the selected login. Anonymous works only for a few free apps.
 - SteamCMD occasionally no-ops the first download attempt; the app retries
   automatically.
+- **Some games have no Steam Workshop** (e.g. Cities: Skylines II publishes
+  through Paradox Mods) — the app will tell you when a workshop hub
+  doesn't exist for the game you picked.
 
 ## Legal / ethics note
 

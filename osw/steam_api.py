@@ -78,13 +78,23 @@ def get_app_name(appid: int) -> str:
 # ---------------------------------------------------------- workshop browsing
 
 
-def _extract_ssr_blob(page: str) -> object:
+def _extract_ssr_blob(page: str, appid_hint: int = 0) -> object:
     m = re.search(
         r'<script[^>]*type="application/json"[^>]*id="valve-ssr-data"[^>]*>(.*?)</script>',
         page,
         re.S,
     )
     if not m:
+        # A 302 to the generic /workshop hub usually means the app has no
+        # community workshop on this site (e.g. CS2 -> Paradox Mods).
+        tilt = re.search(r"<title>Steam Community :: (.*?)</title>", page, re.S)
+        title = (tilt.group(1).strip() if tilt else "")
+        if title.lower() in ("steam workshop", "steam community"):
+            raise NetError(
+                f"This game ({appid_hint}) has no Steam Workshop community hub."
+                " Its mods may live on a publisher platform (e.g. Paradox Mods)"
+                " instead."
+            )
         raise NetError("Workshop page is missing its SSR payload (Valve redesigned the page)")
     return json.loads(m.group(1))
 
@@ -147,7 +157,7 @@ def browse_workshop(
     if search_text:
         url = urljoin(url, searchtext=search_text)
     page_html = http.text(url)
-    blob = _extract_ssr_blob(page_html)
+    blob = _extract_ssr_blob(page_html, appid_hint=appid)
 
     holder: list = []
     _walk_results(blob, holder)
