@@ -17,7 +17,9 @@ Valve's official **SteamCMD**.
 ## Install
 
 ```bash
-python -m venv .venv && source .venv/bin/activate   # recommended
+python -m venv --system-site-packages .venv   # recommended
+source .venv/bin/activate       # bash / zsh
+source .venv/bin/activate.fish  # fish
 pip install -e .                # GUI + CLI
 ```
 
