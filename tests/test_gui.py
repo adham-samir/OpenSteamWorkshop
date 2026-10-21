@@ -1345,6 +1345,7 @@ def test_settings_desktop_toggle_states(window):
 
 
 def test_window_installs_and_removes_desktop_entry(window, monkeypatch):
+    window.settings_page.set_desktop_available(True)  # Linux-only feature
     calls = []
     monkeypatch.setattr(
         "osw.gui.main_window.install_desktop_entry",
