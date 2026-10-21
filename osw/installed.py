@@ -9,20 +9,41 @@ non-numeric entries and symlinks are skipped rather than failing the whole
 scan. Metadata enrichment is a separate, paced network step so opening the
 Library never waits on Steam.
 
+Installed revisions come from SteamCMD's ``appworkshop_<appid>.acf`` manifest
+(staged items) or the delivery marker (moved items), so the update checker can
+compare them with the latest Workshop metadata.
+
 This module is Qt-free so the CLI can reuse it for its installed guard.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .delivery import read_marker
 from .steam_api import get_app_name, get_published_files
+
+UPDATE_AVAILABLE = "update-available"
+UP_TO_DATE = "up-to-date"
+UNAVAILABLE = "unavailable"
+UNKNOWN = "unknown"
+
+
+def _date(ts) -> str:
+    try:
+        ts = int(ts or 0)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 def _short_path(path: Path) -> str:
@@ -44,6 +65,11 @@ class InstalledItem:
     app_name: str = ""
     delivered: bool = False
     origin: Path | None = None
+    updated: int = 0  # Workshop time_updated of the installed copy; 0 = unknown
+
+    @property
+    def updated_label(self) -> str:
+        return _date(self.updated) or "unknown"
 
     @property
     def label(self) -> str:
@@ -77,6 +103,93 @@ def content_dir(mods_root: Path | str) -> Path:
     if root.name == "content" and root.parent.name == "workshop":
         return root
     return root / "steamapps" / "workshop" / "content"
+
+
+def acf_path(mods_root: Path | str, appid: int) -> Path:
+    """SteamCMD's per-game manifest sits beside the content tree."""
+    return content_dir(mods_root).parent / f"appworkshop_{int(appid)}.acf"
+
+
+_VDF_TOKEN = re.compile(r'"((?:[^"\\]|\\.)*)"|([{}])')
+
+
+def _parse_vdf(text: str) -> dict:
+    """Parse the subset of Valve KeyValues used by ``appworkshop_*.acf``."""
+    tokens = [
+        (match.group(1), None) if match.group(1) is not None else (None, match.group(2))
+        for match in _VDF_TOKEN.finditer(text)
+    ]
+    position = 0
+
+    def block() -> dict:
+        nonlocal position
+        values: dict = {}
+        while position < len(tokens):
+            key, brace = tokens[position]
+            if brace == "}":
+                position += 1
+                return values
+            if brace == "{":  # stray container without a key
+                position += 1
+                continue
+            position += 1
+            if position < len(tokens) and tokens[position][1] == "{":
+                position += 1
+                values[key] = block()
+            elif position < len(tokens):
+                values[key] = tokens[position][0]
+                position += 1
+        return values
+
+    return block()
+
+
+def _positive_int(value) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def read_acf_updates(mods_root: Path | str, appid: int) -> dict[int, int]:
+    """Map installed file IDs to the Workshop revision SteamCMD recorded.
+
+    Returns an empty mapping when the manifest is missing or unreadable; a
+    portable mods tree may have been copied without it.
+    """
+    try:
+        text = acf_path(mods_root, appid).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    root = _parse_vdf(text).get("AppWorkshop")
+    installed = root.get("WorkshopItemsInstalled") if isinstance(root, dict) else None
+    if not isinstance(installed, dict):
+        return {}
+    updates: dict[int, int] = {}
+    for key, value in installed.items():
+        if not str(key).isdigit() or not isinstance(value, dict):
+            continue
+        stamp = _positive_int(value.get("timeupdated"))
+        if stamp:
+            updates[int(key)] = stamp
+    return updates
+
+
+def _marker_updated(marker: dict) -> int:
+    """Exact revision from the marker, else the delivery day as a lower bound.
+
+    Legacy markers only recorded a date. Using UTC midnight keeps the display
+    stable across time zones and errs towards one redundant update rather than
+    missing a same-day revision.
+    """
+    stamp = _positive_int(marker.get("updated"))
+    if stamp:
+        return stamp
+    try:
+        day = datetime.strptime(str(marker.get("delivered") or ""), "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return 0
+    return int(day.replace(tzinfo=timezone.utc).timestamp())
 
 
 def _cancelled(cancel: threading.Event | None) -> bool:
@@ -169,6 +282,7 @@ def scan_installed(
         if _cancelled(cancel):
             return None
         appid = int(app_path.name)
+        revisions = read_acf_updates(mods_root, appid)
         for item_path in _numeric_dirs(app_path):
             if _cancelled(cancel):
                 return None
@@ -176,13 +290,15 @@ def scan_installed(
             if stats is None:
                 return None
             size, modified = stats
-            found[(appid, int(item_path.name))] = InstalledItem(
+            fileid = int(item_path.name)
+            found[(appid, fileid)] = InstalledItem(
                 appid=appid,
-                fileid=int(item_path.name),
+                fileid=fileid,
                 path=item_path,
                 size=size,
                 modified=modified,
                 origin=content,
+                updated=revisions.get(fileid, 0),
             )
 
     for _appid, folder in sorted((game_paths or {}).items()):
@@ -243,6 +359,7 @@ def scan_delivered_folder(
                 title=title.strip() if isinstance(title, str) else "",
                 delivered=True,
                 origin=root,
+                updated=_marker_updated(marker),
             )
         )
     return items
@@ -302,6 +419,83 @@ def fetch_installed_metadata(
         if title or app_name:
             metadata[item.fileid] = InstalledMetadata(title=title, app_name=app_name)
     return metadata
+
+
+@dataclass(frozen=True)
+class UpdateInfo:
+    """Comparison of an installed copy with the latest Workshop revision."""
+
+    fileid: int
+    status: str
+    installed: int = 0
+    online: int = 0
+    title: str = ""
+
+    @property
+    def available(self) -> bool:
+        return self.status == UPDATE_AVAILABLE
+
+    @property
+    def installed_label(self) -> str:
+        return _date(self.installed) or "unknown"
+
+    @property
+    def online_label(self) -> str:
+        return _date(self.online) or "unknown"
+
+    @property
+    def label(self) -> str:
+        return {
+            UPDATE_AVAILABLE: "Update available",
+            UP_TO_DATE: "Up to date",
+            UNAVAILABLE: "Unavailable",
+            UNKNOWN: "Version unknown",
+        }.get(self.status, self.status)
+
+
+def check_updates(
+    items, cancel: threading.Event | None = None, *, pace: float = 0.35
+) -> dict[int, UpdateInfo]:
+    """Compare installed revisions with the latest public Workshop metadata.
+
+    Uses the same 100-ID batches as metadata enrichment. Network errors
+    propagate so callers can report them; a cancelled check returns ``{}``.
+    """
+    by_fileid: dict[int, InstalledItem] = {}
+    for item in items:
+        by_fileid.setdefault(int(item.fileid), item)
+    if not by_fileid or _cancelled(cancel):
+        return {}
+
+    statuses: dict[int, UpdateInfo] = {}
+    fileids = sorted(by_fileid)
+    for offset in range(0, len(fileids), 100):
+        if _cancelled(cancel):
+            return {}
+        batch = fileids[offset : offset + 100]
+        rows = get_published_files(batch, cancel) or {}
+        for fileid in batch:
+            item = by_fileid[fileid]
+            row = rows.get(fileid)
+            if not isinstance(row, dict) or _positive_int(row.get("result")) != 1:
+                statuses[fileid] = UpdateInfo(
+                    fileid, UNAVAILABLE, item.updated, 0, item.title
+                )
+                continue
+            online = _positive_int(row.get("time_updated"))
+            title = str(row.get("title") or item.title)
+            if not item.updated or not online:
+                status = UNKNOWN
+            elif online > item.updated:
+                status = UPDATE_AVAILABLE
+            else:
+                status = UP_TO_DATE
+            statuses[fileid] = UpdateInfo(
+                fileid, status, item.updated, online, title
+            )
+        if offset + len(batch) < len(fileids) and not _pause(cancel, pace):
+            return {}
+    return statuses
 
 
 def delete_installed_item(item: InstalledItem, mods_root: Path | str) -> None:
@@ -434,6 +628,9 @@ class InstalledIndex:
 
     def locations(self) -> dict[int, InstalledItem]:
         return dict(self._by_fileid)
+
+    def items(self) -> list[InstalledItem]:
+        return sorted(self._by_key.values(), key=lambda item: (item.appid, item.fileid))
 
     def __len__(self) -> int:
         return len(self._by_key)

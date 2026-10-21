@@ -65,6 +65,8 @@ from .downloads_page import DownloadsPage
 from .imports_page import ImportPage
 from .library import (
     InstalledIndex,
+    UpdateInfo,
+    check_updates,
     content_dir,
     delete_installed_item,
     fetch_installed_metadata,
@@ -298,6 +300,9 @@ class MainWindow(QMainWindow):
         self.installed = InstalledIndex()
         self._installed_ready = False
         self._installed_generation = 0
+        self._update_status: dict[int, UpdateInfo] = {}
+        self._update_check_cancel = threading.Event()
+        self._update_check_generation = 0
         self._library_scan_generation = 0
         self._library_scan_cancel = threading.Event()
         self._library_meta_cancel = threading.Event()
@@ -473,6 +478,7 @@ class MainWindow(QMainWindow):
 
     def _wire_library(self) -> None:
         self.library.refresh_requested.connect(self._scan_library)
+        self.library.check_updates_requested.connect(self._check_updates)
         self.library.open_root_requested.connect(self._open_library_root)
         self.library.action_requested.connect(self._on_library_action)
 
@@ -984,10 +990,17 @@ class MainWindow(QMainWindow):
 
     def _confirm_reinstall(self, hit) -> bool:
         """Ask before re-downloading an item that is already on disk."""
+        update = self._update_status.get(hit.fileid)
+        stale = ""
+        if update is not None and update.available:
+            stale = (
+                f"\n\nA newer Workshop version is available "
+                f"(installed {update.installed_label}, latest {update.online_label})."
+            )
         answer = QMessageBox.question(
             self,
             "Already installed",
-            f"{hit.label} is already installed at:\n{hit.path}\n\n"
+            f"{hit.label} is already installed at:\n{hit.path}{stale}\n\n"
             "Download it again and overwrite the installed copy?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
@@ -1108,6 +1121,7 @@ class MainWindow(QMainWindow):
     def _on_job_ui(self, job: JobSnapshot) -> None:
         if self._closing or self.manager.get_job(job.id) is None:
             return
+        previous = self._job_snapshots.get(job.id)
         self._job_snapshots[job.id] = job
         self._job_rows.setdefault(job.id, _JobRowCompat()).update(job)
         self.downloads.upsert(job)
@@ -1118,6 +1132,11 @@ class MainWindow(QMainWindow):
                 job.output_path or job.dest,
                 title=job.title,
             )
+            # Only a live transition proves the on-disk copy is current; a
+            # restored DONE job may be older than the installed revision.
+            if previous is not None and previous.state is not JobState.DONE:
+                self._update_status.pop(job.fileid, None)
+                self.library.mark_updated(job.fileid)
         self.update_strip()
 
     def _refresh_jobs(self) -> None:
@@ -1305,6 +1324,9 @@ class MainWindow(QMainWindow):
         )
         if not items:
             return
+        if self._update_status:
+            self.library.apply_update_status(self._update_status)
+        self._maybe_check_updates(items)
         meta_cancel = self._library_meta_cancel
         self.hub.call(
             lambda: fetch_installed_metadata(items, meta_cancel),
@@ -1329,6 +1351,54 @@ class MainWindow(QMainWindow):
         self.library.show_error(str(exc), path)
         self.statusBar().showMessage(f"Could not scan the Library: {exc}", 8000)
 
+    def _maybe_check_updates(self, items) -> None:
+        """Automatic check at most once a day; the button always checks."""
+        if not items or self._closing or not self.state.updates_check_due():
+            return
+        self._check_updates(items)
+
+    def _check_updates(self, items=None) -> None:
+        if self._closing:
+            return
+        if items is None:
+            items = self.library.model.items()
+        items = list(items)
+        if not items:
+            self.statusBar().showMessage("Nothing installed to check for updates", 4000)
+            return
+
+        self._update_check_generation += 1
+        generation = self._update_check_generation
+        self._update_check_cancel.set()
+        cancel = threading.Event()
+        self._update_check_cancel = cancel
+        self.library.set_checking(True)
+        self.statusBar().showMessage("Checking installed mods for updates…")
+
+        def done(statuses) -> None:
+            if self._closing or generation != self._update_check_generation:
+                return
+            if statuses is None:
+                return
+            self._update_status.update(statuses)
+            self.library.apply_update_status(self._update_status)
+            self.library.set_checking(False)
+            self.state.mark_updates_checked()
+            available = self.library.model.update_count()
+            if available:
+                noun = "update" if available == 1 else "updates"
+                self.statusBar().showMessage(f"{available} {noun} available", 6000)
+            else:
+                self.statusBar().showMessage("Installed mods are up to date", 5000)
+
+        def failed(exc) -> None:
+            if self._closing or generation != self._update_check_generation:
+                return
+            self.library.set_checking(False)
+            self.statusBar().showMessage(f"Update check failed: {exc}", 8000)
+
+        self.hub.call(lambda: check_updates(items, cancel), done, on_error=failed)
+
     def _open_library_root(self) -> None:
         root = Path(get("content_root")).expanduser()
         path = self._library_content_dir or content_dir(root)
@@ -1346,10 +1416,33 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(item.path)))
         elif action == "Inspect in Browse":
             self._inspect_library_item(item)
+        elif action == "Update":
+            self._queue_update(item)
         elif action == "Re-download":
             self._redownload_library_item(item)
         elif action == "Delete":
             self._delete_library_item(item)
+
+    def _queue_update(self, item) -> None:
+        """Re-download an outdated item into the folder it already lives in."""
+        self._ensure_manager_settings()
+        deliver_to = item.origin if item.delivered else None
+        work = WorkshopItem(
+            item.fileid,
+            appid=item.appid,
+            title=item.title or f"Workshop item {item.fileid}",
+            time_updated=item.updated,
+        )
+        try:
+            job = self.manager.add(
+                work, item.app_name, deliver_to=deliver_to, reinstall=True
+            )
+        except (ValueError, OSError) as exc:
+            self.on_error(str(exc))
+            return
+        self.statusBar().showMessage(f"Updating {item.label}…", 5000)
+        self._on_job_ui(job.snapshot())
+        self.navigate("downloads")
 
     def _inspect_library_item(self, item) -> None:
         """Open Browse with the installed item's details in the inspector."""
@@ -1436,6 +1529,7 @@ class MainWindow(QMainWindow):
             return
         self.library.remove_item(item.fileid)
         self.installed.remove(item.appid, item.fileid)
+        self._update_status.pop(item.fileid, None)
         self.nav.set_library_count(self.library.model.rowCount())
         self.statusBar().showMessage(f"Deleted {item.label}", 5000)
 
@@ -1481,6 +1575,7 @@ class MainWindow(QMainWindow):
         self.hub.cancel.set()
         self._library_scan_cancel.set()
         self._library_meta_cancel.set()
+        self._update_check_cancel.set()
         self.imports._stop()
         self.manager.shutdown()
         super().closeEvent(event)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .bulk import resolve_downloads
-from .installed import InstalledIndex
+from .installed import InstalledIndex, check_updates
 from .models import WorkshopItem
 from .net import NetError
 from .queue import DownloadManager, JobState
@@ -147,14 +147,25 @@ def _console_auth(job, kind, prompt, cancel):
         print(file=sys.stderr, flush=True)
 
 
+def _installed_index(root) -> InstalledIndex:
+    """Build an index that also understands per-game delivery folders."""
+    index = InstalledIndex()
+    try:
+        from .gui.state import AppState
+
+        game_paths = AppState(autosave=False).game_paths
+    except Exception:  # state is optional for the CLI
+        game_paths = {}
+    index.scan(root, game_paths)
+    return index
+
+
 def _filter_installed(args, items):
     """Drop items already installed under the effective root unless --reinstall."""
     if not items or getattr(args, "reinstall", False):
         return items
     root = args.out or get("content_root")
-    index = InstalledIndex(content_root=Path(root))
-    if not index.scan():
-        return items
+    index = _installed_index(root)
     keep = []
     for item in items:
         hit = index.lookup(item.appid, item.publishedfileid)
@@ -177,22 +188,82 @@ def _download_items(args, items, had_issues=False):
         return EXIT_ERR if had_issues else EXIT_OK
     manager = _build_manager(args)
     try:
-        jobs = manager.add_many(items)
-        last = {}
-        while any(
-            j.state in (JobState.QUEUED, JobState.RUNNING, JobState.WAITING_FOR_AUTH) for j in jobs
-        ):
-            for job in jobs:
-                if last.get(job.id) != job.state:
-                    print(f"[{job.fileid}] {job.state.value}: {job.title}", flush=True)
-                    last[job.id] = job.state
-            time.sleep(0.05)
+        return _run_jobs(manager, manager.add_many(items), had_issues)
+    finally:
+        manager.shutdown()
+
+
+def _run_jobs(manager, jobs, had_issues=False):
+    last = {}
+    while any(
+        j.state in (JobState.QUEUED, JobState.RUNNING, JobState.WAITING_FOR_AUTH) for j in jobs
+    ):
         for job in jobs:
-            print(f"[{job.fileid}] {job.state.value}: {job.message}")
-        failures = [j for j in jobs if j.state is not JobState.DONE]
-        if failures and all(j.error_kind == "access" for j in failures) and not had_issues:
-            return EXIT_NOT_OWNED  # retained exit code; access denied does not prove non-ownership
-        return EXIT_ERR if failures or had_issues else EXIT_OK
+            if last.get(job.id) != job.state:
+                print(f"[{job.fileid}] {job.state.value}: {job.title}", flush=True)
+                last[job.id] = job.state
+        time.sleep(0.05)
+    for job in jobs:
+        print(f"[{job.fileid}] {job.state.value}: {job.message}")
+    failures = [j for j in jobs if j.state is not JobState.DONE]
+    if failures and all(j.error_kind == "access" for j in failures) and not had_issues:
+        return EXIT_NOT_OWNED  # retained exit code; access denied does not prove non-ownership
+    return EXIT_ERR if failures or had_issues else EXIT_OK
+
+
+def cmd_updates(args):
+    root = Path(args.out or get("content_root"))
+    index = _installed_index(root)
+    wanted = set(args.appid or [])
+    items = [item for item in index.items() if not wanted or item.appid in wanted]
+    if not items:
+        print("No installed Workshop content found.")
+        return EXIT_OK
+
+    statuses = check_updates(items)
+
+    def rank(item):
+        info = statuses.get(item.fileid)
+        return (0 if info is not None and info.available else 1, item.appid, item.fileid)
+
+    ordered = sorted(items, key=rank)
+    for item in ordered:
+        info = statuses.get(item.fileid)
+        if info is None:
+            continue
+        print(
+            f"{info.label:<17} installed {info.installed_label} · latest {info.online_label}"
+            f"  {item.fileid}  {info.title or item.label}"
+        )
+    available = [
+        item
+        for item in ordered
+        if item.fileid in statuses and statuses[item.fileid].available
+    ]
+    noun = "update" if len(available) == 1 else "updates"
+    print(f"\n{len(items)} installed · {len(available)} {noun} available")
+
+    if not args.apply or not available:
+        return EXIT_OK
+
+    manager = _build_manager(args)
+    try:
+        jobs = []
+        for item in available:
+            jobs.append(
+                manager.add(
+                    WorkshopItem(
+                        item.fileid,
+                        appid=item.appid,
+                        title=item.title,
+                        time_updated=statuses[item.fileid].online,
+                    ),
+                    item.app_name,
+                    deliver_to=item.origin if item.delivered else None,
+                    reinstall=True,
+                )
+            )
+        return _run_jobs(manager, jobs)
     finally:
         manager.shutdown()
 
@@ -311,6 +382,18 @@ def build_parser() -> argparse.ArgumentParser:
     batch.add_argument("--username", help="optional Steam account; default is anonymous")
     batch.add_argument("--anonymous", action="store_true", help="force anonymous login")
     batch.set_defaults(func=cmd_batch)
+
+    up = sub.add_parser(
+        "updates", help="check installed workshop items for newer revisions"
+    )
+    up.add_argument("appid", nargs="*", type=int, help="limit the check to these games")
+    up.add_argument("--out", default=None, help="content root dir (default from settings)")
+    up.add_argument(
+        "--apply", action="store_true", help="download every available update"
+    )
+    up.add_argument("--username", default=None, help="steam username (anonymous if omitted)")
+    up.add_argument("--anonymous", action="store_true", help="force anonymous login")
+    up.set_defaults(func=cmd_updates)
 
     u = sub.add_parser("url", help="parse a pasted steam URL into ids")
     u.add_argument("text", nargs="+")

@@ -7,6 +7,7 @@ Loading is tolerant: a corrupt or partial file simply yields empty lists.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from .. import settings
@@ -14,6 +15,7 @@ from ..models import Game
 from ..storage import atomic_json
 
 RECENT_LIMIT = 6
+UPDATE_CHECK_INTERVAL = 24 * 60 * 60  # seconds between automatic checks
 
 
 def default_path() -> Path:
@@ -70,6 +72,7 @@ class AppState:
         self.recent: list[Game] = []
         self.favorites: list[Game] = []
         self.game_paths: dict[int, Path] = {}
+        self.last_update_check = 0.0
         self.load()
 
     @property
@@ -86,6 +89,10 @@ class AppState:
         self.recent = _games(raw.get("recent"))[:RECENT_LIMIT]
         self.favorites = _games(raw.get("favorites"))
         self.game_paths = _game_paths(raw.get("game_paths"))
+        try:
+            self.last_update_check = max(0.0, float(raw.get("last_update_check") or 0))
+        except (TypeError, ValueError):
+            self.last_update_check = 0.0
 
     def save(self) -> None:
         atomic_json(
@@ -98,6 +105,7 @@ class AppState:
                     str(appid): str(path)
                     for appid, path in sorted(self.game_paths.items())
                 },
+                "last_update_check": self.last_update_check,
             },
         )
 
@@ -153,6 +161,13 @@ class AppState:
         del self.game_paths[appid]
         self._save_if_needed()
         return True
+
+    def updates_check_due(self, interval: int = UPDATE_CHECK_INTERVAL) -> bool:
+        return time.time() - self.last_update_check >= interval
+
+    def mark_updates_checked(self, when: float | None = None) -> None:
+        self.last_update_check = float(time.time() if when is None else when)
+        self._save_if_needed()
 
     def favorite_games(self) -> list[Game]:
         return list(self.favorites)

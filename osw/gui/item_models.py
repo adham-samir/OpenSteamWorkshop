@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import (
     QAbstractListModel,
     QAbstractTableModel,
@@ -12,7 +14,15 @@ from PySide6.QtGui import QImage, QPixmap
 
 from ..models import WorkshopItem, fmt_count, fmt_size, fmt_unix
 from ..queue import ACTIVE, JobSnapshot, JobState
-from .library import InstalledItem
+from . import theme
+from .library import (
+    UNAVAILABLE,
+    UNKNOWN,
+    UP_TO_DATE,
+    UPDATE_AVAILABLE,
+    InstalledItem,
+    UpdateInfo,
+)
 
 THUMB = 168  # rendered thumbnail box
 
@@ -472,17 +482,19 @@ def actions_for(snap: JobSnapshot) -> tuple[str, ...]:
 # ------------------------------------------------------------------ library
 
 
-INSTALLED_ACTIONS = ("Open folder", "Inspect in Browse", "Re-download", "Delete")
+INSTALLED_ACTIONS = ("Open folder", "Inspect in Browse", "Update", "Re-download", "Delete")
 
 
 class InstalledLibraryModel(QAbstractTableModel):
     """Model-backed installed-content table; metadata arrives by role update."""
 
-    COLUMNS = ("Workshop item", "Game", "Location", "Size", "Modified")
+    COLUMNS = ("Workshop item", "Game", "Location", "Size", "Modified", "Update")
+    UPDATE_COLUMN = 5
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items: list[InstalledItem] = []
+        self._updates: dict[int, UpdateInfo] = {}
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._items)
@@ -506,6 +518,9 @@ class InstalledLibraryModel(QAbstractTableModel):
         if role == InstalledItemRole:
             return item
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
+            if index.column() == self.UPDATE_COLUMN:
+                update = self._updates.get(item.fileid)
+                return update.label if update is not None else ""
             return (
                 item.title or f"Workshop item {item.fileid}",
                 item.game_label,
@@ -513,6 +528,16 @@ class InstalledLibraryModel(QAbstractTableModel):
                 fmt_size(item.size) or "—",
                 fmt_unix(item.modified) or "—",
             )[index.column()]
+        if role == Qt.ItemDataRole.ForegroundRole and index.column() == self.UPDATE_COLUMN:
+            update = self._updates.get(item.fileid)
+            if update is None:
+                return None
+            return {
+                UPDATE_AVAILABLE: theme.WARN,
+                UP_TO_DATE: theme.TEXT2,
+                UNAVAILABLE: theme.BAD,
+                UNKNOWN: theme.TEXT2,
+            }.get(update.status, theme.TEXT2)
         if role == Qt.ItemDataRole.ToolTipRole:
             bits = [
                 item.label,
@@ -523,14 +548,21 @@ class InstalledLibraryModel(QAbstractTableModel):
             ]
             if item.modified:
                 bits.append(f"Modified {fmt_unix(item.modified)}")
+            update = self._updates.get(item.fileid)
+            if update is not None:
+                bits.append(f"Installed version {update.installed_label}")
+                if update.online:
+                    bits.append(f"Latest version {update.online_label}")
             bits.append(str(item.path))
             return "\n".join(bits)
         if role == Qt.ItemDataRole.AccessibleTextRole:
+            update = self._updates.get(item.fileid)
+            update_text = f", {update.label}" if update is not None else ""
             return (
                 f"{item.label}, Workshop ID {item.fileid}, "
                 f"{item.game_label}, {item.location_label}, "
                 f"{fmt_size(item.size) or 'unknown size'}, "
-                f"modified {fmt_unix(item.modified) or 'unknown'}"
+                f"modified {fmt_unix(item.modified) or 'unknown'}{update_text}"
             )
         return None
 
@@ -588,3 +620,66 @@ class InstalledLibraryModel(QAbstractTableModel):
 
     def total_size(self) -> int:
         return sum(item.size for item in self._items)
+
+    # ------------------------------------------------------------- updates
+
+    def set_update_status(self, statuses: dict[int, UpdateInfo]) -> None:
+        self._updates.update(statuses or {})
+        self._notify_update_change()
+
+    def mark_updated(self, fileid: int) -> None:
+        """A fresh download just landed; no need to wait for the next check."""
+        fileid = int(fileid)
+        current = self._updates.get(fileid)
+        installed = int(time.time())
+        self._updates[fileid] = UpdateInfo(
+            fileid,
+            UP_TO_DATE,
+            installed,
+            current.online if current is not None else 0,
+            current.title if current is not None else "",
+        )
+        for item in self._items:
+            if item.fileid == fileid:
+                item.updated = installed
+        self._notify_update_change()
+
+    def update_for(self, fileid: int) -> UpdateInfo | None:
+        return self._updates.get(int(fileid))
+
+    def update_available(self, fileid: int) -> bool:
+        update = self._updates.get(int(fileid))
+        return update is not None and update.available
+
+    def update_count(self) -> int:
+        return sum(
+            1
+            for item in self._items
+            if self.update_available(item.fileid)
+        )
+
+    def checked_count(self) -> int:
+        return sum(1 for item in self._items if item.fileid in self._updates)
+
+    def up_to_date_count(self) -> int:
+        return sum(
+            1
+            for item in self._items
+            if (update := self._updates.get(item.fileid)) is not None
+            and update.status == UP_TO_DATE
+        )
+
+    def _notify_update_change(self) -> None:
+        if not self._items:
+            return
+        last = len(self._items) - 1
+        self.dataChanged.emit(
+            self.index(0, self.UPDATE_COLUMN),
+            self.index(last, self.UPDATE_COLUMN),
+            [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ForegroundRole],
+        )
+        self.dataChanged.emit(
+            self.index(0, 0),
+            self.index(last, self.columnCount() - 1),
+            [Qt.ItemDataRole.ToolTipRole, Qt.ItemDataRole.AccessibleTextRole],
+        )

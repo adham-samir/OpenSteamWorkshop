@@ -28,6 +28,7 @@ class LibraryPage(QWidget):
     """Intent: refresh / open root / per-item actions; the controller scans."""
 
     refresh_requested = Signal()
+    check_updates_requested = Signal()
     open_root_requested = Signal()
     action_requested = Signal(object, str)  # InstalledItem, action label
 
@@ -52,6 +53,11 @@ class LibraryPage(QWidget):
         title_box.addWidget(title)
         title_box.addWidget(self.subheader)
         head.addLayout(title_box, 1)
+
+        self.check_btn = QPushButton("Check for updates")
+        self.check_btn.setAccessibleName("Check installed Workshop items for newer versions")
+        self.check_btn.clicked.connect(self.check_updates_requested.emit)
+        head.addWidget(self.check_btn)
 
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setAccessibleName("Rescan installed Workshop content")
@@ -89,9 +95,11 @@ class LibraryPage(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(1, 145)
         self.table.setColumnWidth(3, 90)
         self.table.setColumnWidth(4, 125)
+        self.table.setColumnWidth(5, 130)
         self.table.setCornerButtonEnabled(False)
         self.table.doubleClicked.connect(self._open_selected_folder)
 
@@ -161,9 +169,7 @@ class LibraryPage(QWidget):
             return
         self._stack.setCurrentIndex(0)
         self.action_bar.setVisible(True)
-        total = fmt_size(self.model.total_size()) or "unknown size"
-        noun = "item" if len(items) == 1 else "items"
-        self.summary.setText(f"{len(items)} installed {noun} · {total}")
+        self._render_summary()
         self.update_actions(self.table.selectionModel().currentIndex())
 
     def show_empty(self, path=None) -> None:
@@ -208,16 +214,43 @@ class LibraryPage(QWidget):
     def apply_metadata(self, metadata: dict) -> None:
         self.model.apply_metadata(metadata)
 
+    def apply_update_status(self, statuses) -> None:
+        self.model.set_update_status(statuses)
+        self._render_summary()
+        self.update_actions(self.table.selectionModel().currentIndex())
+
+    def mark_updated(self, fileid: int) -> None:
+        self.model.mark_updated(fileid)
+        self._render_summary()
+        self.update_actions(self.table.selectionModel().currentIndex())
+
+    def set_checking(self, running: bool) -> None:
+        self.check_btn.setEnabled(not running)
+        self.check_btn.setText("Checking for updates…" if running else "Check for updates")
+
+    def _render_summary(self) -> None:
+        count = self.model.rowCount()
+        if count == 0:
+            self.summary.setText("")
+            return
+        total = fmt_size(self.model.total_size()) or "unknown size"
+        noun = "item" if count == 1 else "items"
+        text = f"{count} installed {noun} · {total}"
+        if self.model.checked_count():
+            available = self.model.update_count()
+            if available:
+                noun = "update" if available == 1 else "updates"
+                text += f" · {available} {noun} available"
+            elif self.model.up_to_date_count():
+                text += " · everything up to date"
+        self.summary.setText(text)
+
     def remove_item(self, fileid: int) -> None:
         self.model.remove(fileid)
         if self.model.rowCount() == 0:
             self.show_empty(self._content_dir)
             return
-        total = fmt_size(self.model.total_size()) or "unknown size"
-        self.summary.setText(
-            f"{self.model.rowCount()} installed item"
-            f"{'' if self.model.rowCount() == 1 else 's'} · {total}"
-        )
+        self._render_summary()
         self.update_actions()
 
     # ----------------------------------------------------------- actions
@@ -245,6 +278,8 @@ class LibraryPage(QWidget):
             return
         self.sel_label.setText(f"{item.label} —")
         for label in INSTALLED_ACTIONS:
+            if label == "Update" and not self.model.update_available(item.fileid):
+                continue
             button = QPushButton(label)
             button.setAccessibleName(f"{label} {item.label}")
             button.clicked.connect(

@@ -25,8 +25,11 @@ from osw.gui.item_models import (
     ThumbRole,
 )
 from osw.gui.library import (
+    UP_TO_DATE,
+    UPDATE_AVAILABLE,
     InstalledItem,
     InstalledMetadata,
+    UpdateInfo,
     content_dir,
     delete_installed_item,
     fetch_installed_metadata,
@@ -1055,3 +1058,109 @@ def test_finished_download_records_the_install(window, tmp_path):
     assert hit is not None
     assert hit.path == item_dir
     assert hit.title == "Wiremod"
+
+
+# ------------------------------------------------------------- update checker
+
+
+def test_library_update_badge_summary_and_action(window, tmp_path):
+    item = InstalledItem(10, 20, tmp_path / "mod", title="Wiremod", updated=1000)
+    page = window.library
+    page.show_items([item], tmp_path)
+    page.apply_update_status(
+        {20: UpdateInfo(20, UPDATE_AVAILABLE, 1000, 2000, "Wiremod")}
+    )
+
+    assert (
+        page.model.index(0, page.model.UPDATE_COLUMN).data(Qt.DisplayRole)
+        == "Update available"
+    )
+    assert "1 update available" in page.summary.text()
+
+    page.table.selectRow(0)
+    assert "Update" in [button.text() for button in page.action_buttons]
+
+    page.mark_updated(20)
+    assert page.model.index(0, page.model.UPDATE_COLUMN).data(Qt.DisplayRole) == "Up to date"
+    assert "everything up to date" in page.summary.text()
+    page.table.selectRow(0)
+    assert "Update" not in [button.text() for button in page.action_buttons]
+
+
+def test_manual_update_check_publishes_statuses(window, qapp, tmp_path, monkeypatch):
+    item = InstalledItem(10, 20, tmp_path / "mod", title="Wiremod", updated=1000)
+    window.library.show_items([item], tmp_path)
+    monkeypatch.setattr(
+        "osw.gui.main_window.check_updates",
+        lambda items, cancel: {20: UpdateInfo(20, UPDATE_AVAILABLE, 1000, 2000, "Wiremod")},
+    )
+
+    window._check_updates()
+    pump(qapp, lambda: window.library.model.checked_count() == 1)
+
+    assert (
+        window.library.model.index(0, window.library.model.UPDATE_COLUMN).data(
+            Qt.DisplayRole
+        )
+        == "Update available"
+    )
+    assert window.state.last_update_check > 0
+    assert window.library.check_btn.isEnabled()
+
+
+def test_auto_update_check_respects_daily_throttle(window, monkeypatch):
+    item = InstalledItem(10, 20, Path("/tmp/mod"), updated=1)
+    calls = []
+    monkeypatch.setattr(window, "_check_updates", lambda items=None: calls.append(items))
+
+    window.state.last_update_check = time.time()
+    window._maybe_check_updates([item])
+    assert calls == []
+
+    window.state.last_update_check = 0
+    window._maybe_check_updates([item])
+    assert calls == [[item]]
+
+
+def test_update_action_queues_a_reinstall_in_place(window, tmp_path):
+    origin = tmp_path / "Mods"
+    path = origin / "Wiremod"
+    path.mkdir(parents=True)
+    item = InstalledItem(
+        10,
+        20,
+        path,
+        title="Wiremod",
+        delivered=True,
+        origin=origin,
+        updated=1000,
+    )
+
+    window._queue_update(item)
+
+    job = next(job for job in window.manager.jobs if job.fileid == 20)
+    assert job.deliver_to == origin
+    assert job.state is JobState.QUEUED
+
+
+def test_restored_done_job_does_not_claim_an_install_is_current(
+    window, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(window.manager, "get_job", lambda ident: object())
+    job = window.manager.add_direct(10, 20, title="Wiremod")
+    done = replace(
+        job.snapshot(),
+        id="restored-job",
+        state=JobState.DONE,
+        progress=100.0,
+        output_path=str(tmp_path),
+    )
+
+    window._on_job_ui(done)  # first sighting = replayed from queue.json
+    assert 20 not in window._update_status
+    assert window.library.model.update_for(20) is None
+
+    window._on_job_ui(replace(done, state=JobState.QUEUED))
+    window._on_job_ui(done)  # a live transition during this session
+    update = window.library.model.update_for(20)
+    assert update is not None and update.status == UP_TO_DATE

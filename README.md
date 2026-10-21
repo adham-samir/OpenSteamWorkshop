@@ -31,6 +31,11 @@ Anonymous downloads also work without owning the game when its publisher permits
   any per-game mods folders for content already downloaded. See each item's game,
   location (default or delivered), size and modified date; open its folder,
   inspect it in Browse, re-download it, or delete it with a confirmation.
+- **Mod updates**: the Library compares installed copies with the latest
+  Workshop revision and marks outdated ones. Check on demand, or automatically
+  once a day when you open the Library; **Update** re-downloads into the same
+  folder. `osw updates` reports the same status and `--apply` fetches every
+  available update.
 - **Recent and pinned games**: the Browse landing remembers the last six games you
   opened and keeps pinned favorites one click away. Pin from the current-game header
   or a game result’s context menu.
@@ -69,6 +74,9 @@ osw download 108600 3820938264 --out ~/SteamMods
 osw url "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch --input workshop-links.txt --with-dependencies --out ~/SteamMods
+# Check installed mods for newer Workshop revisions, or fetch them all:
+osw updates 108600
+osw updates 108600 --apply
 # Already-installed items are skipped; --reinstall downloads them again:
 osw download 108600 3820938264 --reinstall
 # Optional account fallback (password and Steam Guard are prompted when needed):
@@ -117,6 +125,15 @@ queues it through the normal download pipeline (delivering to the game's current
 folder when one is set), and **Delete** asks for confirmation before removing the
 item's folder. Non-numeric or unreadable entries are ignored, and a missing
 content folder shows an empty state rather than an error.
+
+**Check for updates** compares each installed item with Steam's latest public
+metadata. The on-disk revision comes from SteamCMD's
+`steamapps/workshop/appworkshop_<appid>.acf` manifest for default-folder items,
+and from the `.opensteamworkshop.json` marker for delivered items. Outdated
+rows show **Update available** and an **Update** action that re-downloads into
+the same folder; an automatic check runs at most once a day when the Library is
+opened. Items without recorded revision information are shown as **Version
+unknown** rather than guessed at.
 
 Recent and pinned games and per-game mods folders live in
 `~/.config/OpenSteamWorkshop/state.json`. That file is deliberately separate from

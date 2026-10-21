@@ -132,13 +132,15 @@ def deliver_item(
     appid: int,
     fileid: int,
     title: str,
+    updated: int = 0,
 ) -> Path:
     """Move one staged item folder into the game's mods folder.
 
     Move semantics: on success the staged folder no longer exists. The
     operation is retry-safe — an existing delivery of the same item is replaced
     (and renamed when the title changed), while a different item with the same
-    title gets an item-id suffix.
+    title gets an item-id suffix. ``updated`` is the Workshop revision that was
+    just downloaded, stored for the update checker.
     """
     staged_path = Path(staged)
     root = Path(destination_root).expanduser()
@@ -171,18 +173,17 @@ def deliver_item(
     except OSError as exc:
         raise DeliveryError(f"Could not move the item into {root}: {exc}") from exc
 
+    marker = {
+        "appid": int(appid),
+        "fileid": int(fileid),
+        "title": str(title or ""),
+        "delivered": time.strftime("%Y-%m-%d"),
+    }
+    if int(updated or 0) > 0:
+        marker["updated"] = int(updated)
     try:
         marker_path(final).write_text(
-            json.dumps(
-                {
-                    "appid": int(appid),
-                    "fileid": int(fileid),
-                    "title": str(title or ""),
-                    "delivered": time.strftime("%Y-%m-%d"),
-                },
-                indent=2,
-            )
-            + "\n",
+            json.dumps(marker, indent=2) + "\n",
             encoding="utf-8",
         )
     except OSError as exc:

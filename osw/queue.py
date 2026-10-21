@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 
 from .delivery import deliver_item
+from .installed import read_acf_updates
 from .models import WorkshopItem
 from .steamcmd import DownloadCancelled, SteamCMD
 from .storage import atomic_json
@@ -357,8 +358,16 @@ class DownloadManager:
                     progress=100.0,
                     message=f"Delivering to {job.deliver_to}…",
                 )
+                # SteamCMD recorded the exact revision it just installed; keep
+                # it in the marker so the update checker can compare it later.
+                revision = read_acf_updates(job.dest, job.appid).get(job.fileid, 0)
                 path = deliver_item(
-                    path, job.deliver_to, job.appid, job.fileid, job.title
+                    path,
+                    job.deliver_to,
+                    job.appid,
+                    job.fileid,
+                    job.title,
+                    updated=revision,
                 )
             update(state=JobState.DONE, progress=100.0, output_path=str(path), message=str(path))
         except (DownloadCancelled, InterruptedError):
