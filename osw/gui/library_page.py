@@ -29,6 +29,7 @@ class LibraryPage(QWidget):
 
     refresh_requested = Signal()
     check_updates_requested = Signal()
+    update_all_requested = Signal()
     open_root_requested = Signal()
     action_requested = Signal(object, str)  # InstalledItem, action label
 
@@ -58,6 +59,12 @@ class LibraryPage(QWidget):
         self.check_btn.setAccessibleName("Check installed Workshop items for newer versions")
         self.check_btn.clicked.connect(self.check_updates_requested.emit)
         head.addWidget(self.check_btn)
+
+        self.update_all_btn = QPushButton("Update all")
+        self.update_all_btn.setAccessibleName("Review and install all available mod updates")
+        self.update_all_btn.setEnabled(False)
+        self.update_all_btn.clicked.connect(self.update_all_requested.emit)
+        head.addWidget(self.update_all_btn)
 
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setAccessibleName("Rescan installed Workshop content")
@@ -148,6 +155,7 @@ class LibraryPage(QWidget):
         self.path_label.setText(f"Scanning: {text}")
         self.path_label.setToolTip(text)
         self.summary.setText("")
+        self._sync_update_all()
         self.state_panel.set_state(
             "loading",
             "Scanning installed content…",
@@ -179,6 +187,7 @@ class LibraryPage(QWidget):
         self.table.setEnabled(True)
         text = str(self._content_dir) if self._content_dir is not None else "your mods root"
         self.summary.setText("")
+        self._sync_update_all()
         self.state_panel.set_state(
             "empty",
             "No installed Workshop content",
@@ -201,6 +210,7 @@ class LibraryPage(QWidget):
         self.model.set_items([])
         self.table.setEnabled(True)
         self.summary.setText("")
+        self._sync_update_all()
         self.state_panel.set_state(
             "error",
             "Could not scan the library",
@@ -228,8 +238,16 @@ class LibraryPage(QWidget):
         self.check_btn.setEnabled(not running)
         self.check_btn.setText("Checking for updates…" if running else "Check for updates")
 
+    def _sync_update_all(self) -> None:
+        available = self.model.update_count()
+        self.update_all_btn.setEnabled(bool(available))
+        self.update_all_btn.setText(
+            f"Update all ({available})" if available else "Update all"
+        )
+
     def _render_summary(self) -> None:
         count = self.model.rowCount()
+        self._sync_update_all()
         if count == 0:
             self.summary.setText("")
             return

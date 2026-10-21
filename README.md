@@ -34,7 +34,8 @@ Anonymous downloads also work without owning the game when its publisher permits
 - **Mod updates**: the Library compares installed copies with the latest
   Workshop revision and marks outdated ones. Check on demand, or automatically
   once a day when you open the Library; **Update** re-downloads into the same
-  folder. `osw updates` reports the same status and `--apply` fetches every
+  folder, and **Update all** reviews every available update with per-item
+  opt-outs. `osw updates` reports the same status and `--apply` fetches every
   available update.
 - **Recent and pinned games**: the Browse landing remembers the last six games you
   opened and keeps pinned favorites one click away. Pin from the current-game header
@@ -133,7 +134,9 @@ and from the `.opensteamworkshop.json` marker for delivered items. Outdated
 rows show **Update available** and an **Update** action that re-downloads into
 the same folder; an automatic check runs at most once a day when the Library is
 opened. Items without recorded revision information are shown as **Version
-unknown** rather than guessed at.
+unknown** rather than guessed at. **Update all** opens a review list of every
+outdated item with installed/latest dates and per-row opt-outs, then queues the
+checked mods into the folders they already live in.
 
 Recent and pinned games and per-game mods folders live in
 `~/.config/OpenSteamWorkshop/state.json`. That file is deliberately separate from

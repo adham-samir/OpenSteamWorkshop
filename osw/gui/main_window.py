@@ -77,6 +77,7 @@ from .nav_rail import NavRail
 from .settings_page import SettingsPage
 from .state import AppState
 from .status_strip import StatusStrip
+from .update_dialog import UpdateAllDialog
 
 CACHE_DIR = Path.home() / ".cache" / "OpenSteamWorkshop" / "thumbs"
 PAGE_KEYS = ("browse", "imports", "library", "downloads", "settings")
@@ -479,6 +480,7 @@ class MainWindow(QMainWindow):
     def _wire_library(self) -> None:
         self.library.refresh_requested.connect(self._scan_library)
         self.library.check_updates_requested.connect(self._check_updates)
+        self.library.update_all_requested.connect(self._update_all)
         self.library.open_root_requested.connect(self._open_library_root)
         self.library.action_requested.connect(self._on_library_action)
 
@@ -1425,6 +1427,14 @@ class MainWindow(QMainWindow):
 
     def _queue_update(self, item) -> None:
         """Re-download an outdated item into the folder it already lives in."""
+        job = self._add_update_job(item)
+        if job is None:
+            return
+        self.statusBar().showMessage(f"Updating {item.label}…", 5000)
+        self._on_job_ui(job.snapshot())
+        self.navigate("downloads")
+
+    def _add_update_job(self, item):
         self._ensure_manager_settings()
         deliver_to = item.origin if item.delivered else None
         work = WorkshopItem(
@@ -1434,14 +1444,41 @@ class MainWindow(QMainWindow):
             time_updated=item.updated,
         )
         try:
-            job = self.manager.add(
+            return self.manager.add(
                 work, item.app_name, deliver_to=deliver_to, reinstall=True
             )
         except (ValueError, OSError) as exc:
             self.on_error(str(exc))
+            return None
+
+    def _update_all(self) -> None:
+        """Review every available update, then queue the checked ones."""
+        entries = []
+        for item in self.library.model.items():
+            update = self.library.model.update_for(item.fileid)
+            if update is not None and update.available:
+                entries.append((item, update))
+        if not entries:
+            self.statusBar().showMessage("No updates available", 4000)
             return
-        self.statusBar().showMessage(f"Updating {item.label}…", 5000)
-        self._on_job_ui(job.snapshot())
+
+        dialog = UpdateAllDialog(entries, self)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        selected = dialog.selected_items() if accepted else []
+        dialog.deleteLater()
+        if not selected:
+            return
+
+        jobs = []
+        for item in selected:
+            job = self._add_update_job(item)
+            if job is not None:
+                jobs.append(job)
+                self._on_job_ui(job.snapshot())
+        if not jobs:
+            return
+        noun = "update" if len(jobs) == 1 else "updates"
+        self.statusBar().showMessage(f"Queued {len(jobs)} {noun}", 6000)
         self.navigate("downloads")
 
     def _inspect_library_item(self, item) -> None:

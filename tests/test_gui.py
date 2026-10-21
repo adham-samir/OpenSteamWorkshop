@@ -1164,3 +1164,164 @@ def test_restored_done_job_does_not_claim_an_install_is_current(
     window._on_job_ui(done)  # a live transition during this session
     update = window.library.model.update_for(20)
     assert update is not None and update.status == UP_TO_DATE
+
+
+def test_update_all_button_tracks_available_updates(window, tmp_path):
+    page = window.library
+    item = InstalledItem(10, 20, tmp_path / "mod", title="Wiremod", updated=1000)
+    page.show_items([item], tmp_path)
+
+    assert page.update_all_btn.isEnabled() is False
+    assert page.update_all_btn.text() == "Update all"
+
+    page.apply_update_status(
+        {20: UpdateInfo(20, UPDATE_AVAILABLE, 1000, 2000, "Wiremod")}
+    )
+    assert page.update_all_btn.isEnabled()
+    assert page.update_all_btn.text() == "Update all (1)"
+
+    page.mark_updated(20)
+    assert page.update_all_btn.isEnabled() is False
+    assert page.update_all_btn.text() == "Update all"
+
+
+def test_update_all_dialog_sorts_and_respects_exclusions(qapp):
+    from osw.gui.update_dialog import UpdateAllDialog
+
+    entries = [
+        (
+            InstalledItem(
+                10,
+                2,
+                Path("/b"),
+                size=2048,
+                title="Second",
+                app_name="Game B",
+                updated=1000,
+            ),
+            UpdateInfo(2, UPDATE_AVAILABLE, 1000, 2000, "Second"),
+        ),
+        (
+            InstalledItem(
+                10,
+                1,
+                Path("/a"),
+                size=1024,
+                title="First",
+                app_name="Game A",
+                updated=1000,
+            ),
+            UpdateInfo(1, UPDATE_AVAILABLE, 1000, 2000, "First"),
+        ),
+    ]
+    dialog = UpdateAllDialog(entries)
+
+    assert [row[0].fileid for row in dialog._rows] == [1, 2]
+    assert [item.fileid for item in dialog.selected_items()] == [1, 2]
+    assert "2 of 2 selected" in dialog.selection_label.text()
+    assert dialog.update_btn.text() == "Update 2 of 2"
+
+    dialog._rows[0][2].setChecked(False)
+    assert [item.fileid for item in dialog.selected_items()] == [2]
+    assert "1 of 2 selected" in dialog.selection_label.text()
+    assert dialog.update_btn.text() == "Update 1 of 2"
+
+    dialog._rows[1][2].setChecked(False)
+    assert dialog.selected_items() == []
+    assert dialog.update_btn.isEnabled() is False
+    dialog.deleteLater()
+
+
+def test_update_all_queues_checked_items_with_correct_targets(
+    window, tmp_path, monkeypatch
+):
+    origin = tmp_path / "Mods"
+    delivered_path = origin / "Delivered"
+    delivered_path.mkdir(parents=True)
+    staged_path = (
+        tmp_path
+        / "mods"
+        / "steamapps"
+        / "workshop"
+        / "content"
+        / "10"
+        / "21"
+    )
+    staged_path.mkdir(parents=True)
+
+    staged = InstalledItem(10, 21, staged_path, title="Staged", updated=1000)
+    delivered = InstalledItem(
+        10,
+        22,
+        delivered_path,
+        title="Delivered",
+        delivered=True,
+        origin=origin,
+        updated=1000,
+    )
+    current = InstalledItem(10, 23, Path("/tmp/current"), title="Current", updated=2000)
+    page = window.library
+    page.show_items([staged, delivered, current], tmp_path)
+    page.apply_update_status(
+        {
+            21: UpdateInfo(21, UPDATE_AVAILABLE, 1000, 2000, "Staged"),
+            22: UpdateInfo(22, UPDATE_AVAILABLE, 1000, 2000, "Delivered"),
+            23: UpdateInfo(23, UP_TO_DATE, 2000, 2000, "Current"),
+        }
+    )
+
+    captured = {}
+
+    class FakeDialog:
+        def __init__(self, entries, parent=None):
+            captured["entries"] = entries
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def selected_items(self):
+            return [staged, delivered]
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr("osw.gui.main_window.UpdateAllDialog", FakeDialog)
+
+    window._update_all()
+
+    assert [entry[0].fileid for entry in captured["entries"]] == [21, 22]
+    jobs = {job.fileid: job for job in window.manager.jobs}
+    assert jobs[21].state is JobState.QUEUED
+    assert jobs[21].deliver_to is None
+    assert jobs[22].state is JobState.QUEUED
+    assert jobs[22].deliver_to == origin.resolve()
+    assert window.workspace == "downloads"
+
+
+def test_update_all_cancelled_dialog_queues_nothing(window, tmp_path, monkeypatch):
+    item = InstalledItem(10, 20, tmp_path / "mod", title="Wiremod", updated=1000)
+    page = window.library
+    page.show_items([item], tmp_path)
+    page.apply_update_status(
+        {20: UpdateInfo(20, UPDATE_AVAILABLE, 1000, 2000, "Wiremod")}
+    )
+
+    class FakeDialog:
+        def __init__(self, entries, parent=None):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Rejected
+
+        def selected_items(self):
+            return []
+
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr("osw.gui.main_window.UpdateAllDialog", FakeDialog)
+    before = len(window.manager.jobs)
+
+    window._update_all()
+
+    assert len(window.manager.jobs) == before
