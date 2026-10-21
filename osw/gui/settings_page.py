@@ -88,7 +88,7 @@ class SettingsPage(QWidget):
 
         self.parallel_spin = QSpinBox()
         self.parallel_spin.setRange(1, 3)
-        self.parallel_spin.setValue(1)
+        self.parallel_spin.setValue(3)
         self.parallel_spin.setAccessibleName("Parallel SteamCMD downloads")
         self.parallel_spin.setToolTip(
             "Download different games at the same time. Items from the same "
@@ -154,7 +154,7 @@ class SettingsPage(QWidget):
         use_account: bool,
         password: str,
         steamcmd_dir: str,
-        parallel: int = 1,
+        parallel: int = 3,
     ) -> None:
         self.root_edit.setText(content_root)
         self.user_edit.setText(username)

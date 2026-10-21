@@ -101,7 +101,13 @@ def test_settings_migrate_passwords_and_validate_types(tmp_path):
 def test_settings_recover_from_invalid_json_shapes(stored):
     settings.CONFIG_FILE.parent.mkdir()
     settings.CONFIG_FILE.write_text(stored)
-    assert settings.load()["parallel_downloads"] == 1
+    assert settings.load()["parallel_downloads"] == 3
+
+
+def test_fresh_settings_default_to_three_parallel_downloads():
+    assert settings.load()["parallel_downloads"] == 3
+    args = cli.build_parser().parse_args(["download", "10", "20"])
+    assert cli._build_manager(args).parallel == 3
 
 
 def test_cli_anonymous_precedence_and_default(monkeypatch):

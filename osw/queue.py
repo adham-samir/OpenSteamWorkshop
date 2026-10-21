@@ -128,7 +128,7 @@ class DownloadManager:
     steamcmd_dir: Path | str | None = None
     username: str = ""
     password: str = ""
-    parallel: int = 1  # 1-3 simultaneous SteamCMD workspaces
+    parallel: int = 3  # 1-3 simultaneous SteamCMD workspaces
     queue_path: Path | None = None
     on_job_update: object = None
     on_log: object = None

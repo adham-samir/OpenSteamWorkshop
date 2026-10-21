@@ -45,7 +45,7 @@ After it finishes:
 #### 2. pipx
 
 ```bash
-pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.6.0/opensteamworkshop-0.6.0-py3-none-any.whl
+pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.6.1/opensteamworkshop-0.6.1-py3-none-any.whl
 osw-gui
 osw desktop-install   # optional: add the app-menu entry
 ```
@@ -88,7 +88,7 @@ py --version
 3. Install it (replace the path with your download folder):
 
 ```powershell
-py -m pip install "$HOME\Downloads\opensteamworkshop-0.6.0-py3-none-any.whl"
+py -m pip install "$HOME\Downloads\opensteamworkshop-0.6.1-py3-none-any.whl"
 ```
 
 `pip` installs PySide6 and the other dependencies automatically.
@@ -149,8 +149,9 @@ and **Settings**, plus a status strip that follows active downloads.
   dependencies, sizes and subscriber counts.
 - **Download through SteamCMD** into `~/SteamMods` by default, with a visible,
   restart-safe queue.
-- **Parallel downloads**: run up to three SteamCMD workers at once, each with
-  its own workspace; items from the same game still download one at a time.
+- **Parallel downloads**: run up to three SteamCMD workers at once (three by
+  default), each with its own workspace; items from the same game still
+  download one at a time. Lower the count in Settings if needed.
 - **Per-game mod folders**: deliver finished mods straight into a game's
   `Mods`/`addons` folder with a title-named folder.
 - **Bulk imports**: paste item or collection URLs, resolve dependencies, review
@@ -182,9 +183,9 @@ osw download 108600 3820938264 --out ~/SteamMods
 osw batch "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch --input workshop-links.txt --with-dependencies
 
-# Run two or three downloads at once (same-game items stay serialized)
+# Run up to three downloads at once (same-game items stay serialized)
 osw batch --input workshop-links.txt --with-dependencies --parallel 2
-osw settings --parallel 3   # default for future commands
+osw settings --parallel 3   # default is already 3; lower it if needed
 
 # Check for newer Workshop revisions, or fetch them all
 osw updates 108600
@@ -222,11 +223,11 @@ folder is used on Windows (`C:\Users\<you>\.config\OpenSteamWorkshop`).
 Changing Settings affects new jobs only; queued jobs keep their destination.
 
 **Parallel downloads.** **Settings → Parallel downloads** (or `--parallel N`)
-runs two or three jobs at a time. Extra workers use sibling workspaces such as
+runs up to three jobs at a time. Extra workers use sibling workspaces such as
 `steamcmd-w1`/`steamcmd-w2`, created automatically. Different games can run
 together; two items from the same game still take turns so SteamCMD's
-`appworkshop_<appid>.acf` is never written concurrently. The default is one
-worker.
+`appworkshop_<appid>.acf` is never written concurrently. The default is three
+workers; lower it to 1 in Settings or with `--parallel 1`.
 
 **Duplicates.** If an item exists both in the default tree and in a per-game
 folder, the delivered copy is the live one and the default copy is leftover.

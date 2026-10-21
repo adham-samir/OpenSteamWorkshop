@@ -14,7 +14,7 @@ DEFAULTS = {
     "content_root": str(Path.home() / "SteamMods"),
     "steamcmd_dir": "",
     "username": "",
-    "parallel_downloads": 1,  # 1-3 simultaneous SteamCMD workers
+    "parallel_downloads": 3,  # 1-3 simultaneous SteamCMD workers
 }
 
 _LAST: dict = {}
@@ -59,9 +59,9 @@ def _validated(data: dict) -> dict:
     if result["steamcmd_dir"]:
         result["steamcmd_dir"] = str(Path(result["steamcmd_dir"]).expanduser().resolve())
     try:
-        result["parallel_downloads"] = int(data.get("parallel_downloads", 1))
+        result["parallel_downloads"] = int(data.get("parallel_downloads", 3))
     except (TypeError, ValueError):
-        result["parallel_downloads"] = 1
+        result["parallel_downloads"] = 3
     result["parallel_downloads"] = max(1, min(3, result["parallel_downloads"]))
     return result
 

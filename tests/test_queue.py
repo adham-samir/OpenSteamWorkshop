@@ -123,6 +123,7 @@ def test_corrupt_queue_is_preserved(tmp_path):
 
 
 def test_parallel_clamping_and_workspace_dirs(tmp_path):
+    assert DownloadManager(tmp_path).parallel == 3
     assert DownloadManager(tmp_path, parallel=0).parallel == 1
     assert DownloadManager(tmp_path, parallel=9).parallel == 3
     assert DownloadManager(tmp_path, parallel="junk").parallel == 1
