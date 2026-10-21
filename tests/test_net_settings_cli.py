@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock
@@ -92,7 +93,8 @@ def test_settings_migrate_passwords_and_validate_types(tmp_path):
     settings.save({"content_root": str(tmp_path / "mods"), "password": "new-secret"})
     data = json.loads(settings.CONFIG_FILE.read_text())
     assert "password" not in data and data["username"] == "user"
-    assert settings.CONFIG_FILE.stat().st_mode & 0o077 == 0
+    if os.name != "nt":  # POSIX permission bits are not meaningful on Windows
+        assert settings.CONFIG_FILE.stat().st_mode & 0o077 == 0
 
 
 @pytest.mark.parametrize("stored", ["null", "[]", '"string"', "{broken"])

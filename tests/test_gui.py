@@ -798,7 +798,7 @@ def test_library_actions_open_inspect_redownload_and_confirm_delete(
 
     monkeypatch.setattr("osw.gui.main_window.QDesktopServices", FakeDesktop)
     window._on_library_action(item, "Open folder")
-    assert opened == [str(item_dir)]
+    assert Path(opened[0]).resolve() == item_dir.resolve()
 
     window.current_game = Game(4000, "Garry's Mod")
     requests = []
