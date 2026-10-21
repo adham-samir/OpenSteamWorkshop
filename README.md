@@ -2,230 +2,270 @@
 
 [![Tests](https://github.com/adham-samir/OpenSteamWorkshop/actions/workflows/tests.yml/badge.svg)](https://github.com/adham-samir/OpenSteamWorkshop/actions/workflows/tests.yml)
 
-Browse a game's Steam Workshop from a desktop app and download mods with
-Valve's official **SteamCMD**, without installing the game.
-Anonymous downloads also work without owning the game when its publisher permits them.
+Browse a game's Steam Workshop from a desktop app and download mods with Valve's
+official **SteamCMD** — without installing the game. Anonymous downloads work
+without owning the game when its publisher allows them.
 
-## What it does
+- **Linux and Windows**, Python 3.10+
+- **No SteamCMD setup**: the app downloads and manages it for you
+- **Library and updates**: see what is installed and when mods have newer versions
+- **CLI included** (`osw`) for scripts and automation
 
-- **Find a game** by name (public store search) or paste an
-  appid / workshop / store URL.
-- **Browse Workshop content**: thumbnail grid with search, sorting
-  (most popular / top rated / most recent), paging, subscriber counts,
-  file sizes, tags and dependencies.
-- **Download items** with SteamCMD into your mods root (default `~/SteamMods`), or
-  opt in to a **per-game mods folder** so finished items are moved into
-  `<chosen folder>/<Item title>/` (e.g. `RimWorld/Mods/Wiremod/`), with retries
-  and a visible queue.
-- CLI included (`osw`) for automation — same engine under the hood.
-- **Bulk imports**: use the **Imports** workspace to paste item/collection URLs
-  or load a text file, preview the resolved mods, optionally include recursive
-  dependencies, and exclude items before queueing.
-- **Recoverable queue**: cancel running jobs, retry failures, open their folders
-  and logs, and resume unfinished jobs after restarting the app.
-- **Skips what is already installed**: if a mod is already on disk, the app asks
-  before re-downloading it; the Imports preview flags installed rows and leaves
-  them unchecked unless you re-check them. `osw` skips installed items and
-  prints where they live unless you pass `--reinstall`.
-- **Installed library**: the Library workspace scans your default mods root and
-  any per-game mods folders for content already downloaded. See each item's game,
-  location (default or delivered), size and modified date; open its folder,
-  inspect it in Browse, re-download it, or delete it with a confirmation.
-- **Mod updates**: the Library compares installed copies with the latest
-  Workshop revision and marks outdated ones. Check on demand, or automatically
-  once a day when you open the Library; **Update** re-downloads into the same
-  folder, and **Update all** reviews every available update with per-item
-  opt-outs. `osw updates` reports the same status and `--apply` fetches every
-  available update.
-- **Recent and pinned games**: the Browse landing remembers the last six games you
-  opened and keeps pinned favorites one click away. Pin from the current-game header
-  or a game result’s context menu.
-
-Linux is the primary release target. Windows code is retained, but this release's
-automated process and GUI checks run on Linux.
-
-The desktop app is organized into five workspaces — **Browse**, **Imports**,
-**Library**, **Downloads**, and **Settings** — with a persistent download status
-strip.
+---
 
 ## Install
 
-**Linux, no root.** The one-liner installs the latest GitHub release into
-`~/.local/share/opensteamworkshop`, links `osw` / `osw-gui` into
-`~/.local/bin`, and adds **OpenSteamWorkshop** to your application menu:
+### Linux
+
+#### 1. One-line installer (recommended)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/adham-samir/OpenSteamWorkshop/main/install.sh | bash
 ```
 
-Search for OpenSteamWorkshop in your app menu after installing. Remove it with
-the repository's `uninstall.sh`; your settings, download queue and mods are
-left untouched.
+This installs the latest release for your user — no `sudo` needed:
 
-**pipx or pip.** Install the released wheel directly until the PyPI listing is
-live:
+| What | Where |
+| --- | --- |
+| Application files | `~/.local/share/opensteamworkshop/` |
+| `osw` and `osw-gui` commands | `~/.local/bin/` |
+| App-menu entry | Added automatically |
+
+After it finishes:
+
+- Search for **OpenSteamWorkshop** in your application menu, or run `osw-gui`.
+- If `~/.local/bin` is not on your `PATH`, the installer prints a note. Open a
+  new terminal, or run `~/.local/bin/osw`.
+- Remove everything again with:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/adham-samir/OpenSteamWorkshop/main/uninstall.sh | bash
+  ```
+  Settings, the download queue and your downloaded mods are left untouched.
+
+#### 2. pipx
 
 ```bash
 pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.5.0/opensteamworkshop-0.5.0-py3-none-any.whl
+osw-gui
 osw desktop-install   # optional: add the app-menu entry
 ```
 
-From a source checkout:
+Once the PyPI listing is live, `pipx install opensteamworkshop` will be enough.
+
+#### 3. From a source checkout
 
 ```bash
-python -m venv --system-site-packages .venv
-source .venv/bin/activate       # bash / zsh
-source .venv/bin/activate.fish  # fish
-pip install -e .                # GUI + CLI
-osw desktop-install             # optional: add the app-menu entry
+git clone https://github.com/adham-samir/OpenSteamWorkshop.git
+cd OpenSteamWorkshop
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+pip install -e .
+osw-gui
 ```
 
-On Windows, install the wheel from the Releases page; the application-menu
-integration is Linux-only for now.
+`osw desktop-install` adds the launcher entry; `osw desktop-uninstall` removes
+it. The same toggle is in **Settings → Application menu**.
 
-## Run
+### Windows
 
-```bash
-osw-gui        # desktop app (PySide6)
-python main.py # same thing
+The app-menu integration is Linux-only for now; on Windows, launch it from a
+terminal or create a shortcut (steps below).
+
+#### 1. Install Python
+
+Install **Python 3.10 or newer** from
+[python.org](https://www.python.org/downloads/windows/). During setup, tick
+**Add python.exe to PATH**. Verify in PowerShell:
+
+```powershell
+py --version
 ```
 
-`osw desktop-uninstall` removes the application-menu entry again (or use
-**Settings → Application menu**).
+#### 2. Download and install the app
 
-CLI:
+1. Open the [latest release](https://github.com/adham-samir/OpenSteamWorkshop/releases/latest).
+2. Download `opensteamworkshop-<version>-py3-none-any.whl`.
+3. Install it (replace the path with your download folder):
+
+```powershell
+py -m pip install "$HOME\Downloads\opensteamworkshop-0.5.0-py3-none-any.whl"
+```
+
+`pip` installs PySide6 and the other dependencies automatically.
+
+#### 3. Run it
+
+```powershell
+osw-gui
+```
+
+If Windows cannot find `osw-gui`, use the module form instead:
+
+```powershell
+py -m osw.gui.main_window
+```
+
+#### 4. Optional: Start-menu or desktop shortcut
+
+Find the folder where Python puts its scripts:
+
+```powershell
+py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+```
+
+Open that folder, right-click `osw-gui.exe`, and choose **Pin to Start** or
+**Send to → Desktop (create shortcut)**.
+
+#### Updating and uninstalling
+
+```powershell
+# install a newer wheel from the releases page
+py -m pip install --upgrade "$HOME\Downloads\opensteamworkshop-<version>-py3-none-any.whl"
+
+# uninstall
+py -m pip uninstall opensteamworkshop
+```
+
+Settings, the queue and your mods are not removed by the uninstaller. On
+Windows they live in `C:\Users\<you>\.config\OpenSteamWorkshop`, plus your mods
+folder (see **How it works**).
+
+---
+
+## Quick start
+
+1. Launch **OpenSteamWorkshop** from your app menu (Linux) or with `osw-gui`.
+2. Search for a game, open it, and browse its Workshop items.
+3. Pick a mod and click **Download**; progress appears in **Downloads**.
+4. Open **Library** to see installed mods; click **Check for updates** to find
+   newer versions.
+
+The app has five workspaces: **Browse**, **Imports**, **Library**, **Downloads**
+and **Settings**, plus a status strip that follows active downloads.
+
+## Features
+
+- **Browse and search** a game's Workshop with thumbnails, sorting, tags,
+  dependencies, sizes and subscriber counts.
+- **Download through SteamCMD** into `~/SteamMods` by default, with a visible,
+  restart-safe queue.
+- **Per-game mod folders**: deliver finished mods straight into a game's
+  `Mods`/`addons` folder with a title-named folder.
+- **Bulk imports**: paste item or collection URLs, resolve dependencies, review
+  the list and queue the mods you want.
+- **Installed library**: inspect, open, re-download or delete installed items.
+- **Mod updates**: check manually or once a day; update single mods or review a
+  batch with **Update all**.
+- **Already-installed protection**: the app asks before re-downloading a mod;
+  the CLI skips installed items unless you pass `--reinstall`.
+- **Recent and pinned games** on the Browse landing page.
+
+## Command line
+
+`osw` exposes the same engine as the GUI:
 
 ```bash
 osw search project zomboid
 osw browse 108600 --sort toprated
 osw browse 108600 --search "maps"
 osw info 3820938264
+
+# Download one or more items
+osw download 108600 3820938264
 osw download 108600 3820938264 --out ~/SteamMods
-osw url "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
+
+# Bulk downloads and collections
 osw batch "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
-osw batch --input workshop-links.txt --with-dependencies --out ~/SteamMods
-# Check installed mods for newer Workshop revisions, or fetch them all:
+osw batch --input workshop-links.txt --with-dependencies
+
+# Check for newer Workshop revisions, or fetch them all
 osw updates 108600
 osw updates 108600 --apply
-osw desktop-install / osw desktop-uninstall   # Linux app-menu entry
-# Already-installed items are skipped; --reinstall downloads them again:
+
+# Installed items are skipped; --reinstall downloads them again
 osw download 108600 3820938264 --reinstall
-# Optional account fallback (password and Steam Guard are prompted when needed):
+
+# Optional Steam account (password/Steam Guard are prompted when needed)
 osw download 108600 3820938264 --username YOUR_STEAM_USERNAME
+
+# Linux application-menu entry
+osw desktop-install
+osw desktop-uninstall
 ```
 
-## Bulk downloads and recovery
+## How it works
 
-Open the **Imports** workspace for a mix of Workshop item and collection URLs,
-or Ctrl/Shift-select mods in Browse and use the bulk action bar to queue them.
-Bare numbers in an import are Workshop item IDs; bare numbers in game search are game IDs.
-The optional game ID hint is used only when an item's own metadata lacks its game ID.
+**Where mods go.** By default, downloads land in
+`<mods root>/steamapps/workshop/content/<appid>/<itemid>/`, with the mods root
+defaulting to `~/SteamMods`. To deliver into a game's own folder, open **Browse**
+→ game header → **Mods folder → Change…**. Finished items are moved to
+`<chosen folder>/<Item title>/` and get a hidden `.opensteamworkshop.json`
+marker. **Clear (use default)** restores the default root.
 
-**Resolve list** fetches metadata, expands nested collections and, if enabled,
-required items. It does not download mod files. Review any invalid/private items
-or unresolved dependencies, uncheck unwanted mods, then choose **Queue selected**.
-Valid items can still be queued when other entries have problems. Mods that are
-already installed are marked **Installed** and left unchecked — re-check one to
-reinstall it.
+**Queue and settings.** The GUI queue is saved to
+`~/.config/OpenSteamWorkshop/queue.json` and restored as interrupted work after
+a restart; choose **Resume unfinished** to continue. Pinned games and per-game
+folders live in `state.json` next to it. The same `.config/OpenSteamWorkshop`
+folder is used on Windows (`C:\Users\<you>\.config\OpenSteamWorkshop`).
+Changing Settings affects new jobs only; queued jobs keep their destination.
 
-SteamCMD jobs run one at a time to avoid workspace/login conflicts. Browsing and
-preview images continue in the background. Cancel stops the running process;
-it is not a promise of byte-for-byte pause/resume. Retry may reuse SteamCMD's
-cached data but always validates the current download result.
+**Updates.** The Library compares each installed item with Steam's latest public
+revision. Default-folder items use SteamCMD's `appworkshop_<appid>.acf`;
+delivered items use the revision recorded in their marker. Outdated rows show
+**Update available**; **Update** re-downloads in place, and **Update all** lets
+you untick items before queueing. Items with no recorded revision are shown as
+**Version unknown** instead of being guessed at.
 
-Downloads use `<mods root>/steamapps/workshop/content/<appid>/<itemid>/` by
-default. For a game whose mods must live elsewhere, open **Browse** and use the
-game header's **Mods folder** menu: *Change…* selects the folder (e.g. the game's
-own `Mods`/`addons` directory), and finished items are then moved there as
-`<chosen folder>/<Item title>/` with a hidden `.opensteamworkshop.json` marker.
-*Clear (use default)* restores the default root. The move happens after SteamCMD
-succeeds, so queued and running downloads are unaffected by later changes.
+## Anonymous access and accounts
 
-The GUI queue is saved in `~/.config/OpenSteamWorkshop/queue.json` and restored
-as interrupted work. Choose **Resume unfinished** to restart it; nothing
-automatically downloads at launch. CLI batch queues are transient.
-Changing Settings affects new jobs, while already queued jobs retain their destination.
-Queue files from earlier versions load unchanged; jobs without a per-game folder
-keep using the default mods root.
+Anonymous login is the default. Whether it works depends on the game's Workshop
+settings — it is not limited to free games — and Steam may deny some content.
 
-The **Library** workspace scans the default content tree plus every configured
-per-game mods folder without touching SteamCMD, marking delivered rows in a
-**Location** column. **Open folder** reveals the installed files, **Inspect in
-Browse** loads the item's metadata into the Browse inspector, **Re-download**
-queues it through the normal download pipeline (delivering to the game's current
-folder when one is set), and **Delete** asks for confirmation before removing the
-item's folder. Non-numeric or unreadable entries are ignored, and a missing
-content folder shows an empty state rather than an error.
-
-**Check for updates** compares each installed item with Steam's latest public
-metadata. The on-disk revision comes from SteamCMD's
-`steamapps/workshop/appworkshop_<appid>.acf` manifest for default-folder items,
-and from the `.opensteamworkshop.json` marker for delivered items. Outdated
-rows show **Update available** and an **Update** action that re-downloads into
-the same folder; an automatic check runs at most once a day when the Library is
-opened. Items without recorded revision information are shown as **Version
-unknown** rather than guessed at. **Update all** opens a review list of every
-outdated item with installed/latest dates and per-row opt-outs, then queues the
-checked mods into the folders they already live in.
-
-Recent and pinned games and per-game mods folders live in
-`~/.config/OpenSteamWorkshop/state.json`. That file is deliberately separate from
-settings and contains only game IDs, names and folder paths. Delete it to reset
-the Browse landing and per-game folders without touching your queue.
-
-## Anonymous access and optional accounts
-
-Anonymous login is the default. Whether it can download a particular game's
-mods depends on the game's Workshop configuration, not whether the game is
-installed locally. Steam may deny access to some content. This app reports that
-response without treating every timeout or missing manifest as an ownership problem.
-
-For an access/authentication failure, use **Retry with account**. Alternatively,
-enable **Use this account for new downloads this session** in Settings. The GUI
-prompts for passwords, Steam Guard codes or mobile approval when required.
-In the CLI, explicitly pass `--username`; `--anonymous` always overrides it.
-For noninteractive automation, `OSW_PASS` can supply the password when a username
-is specified; interactive Steam Guard challenges still need a terminal.
-
-Passwords and codes are never saved in application settings or queue files and
-are not passed in process arguments. Old plaintext password settings are ignored
-and removed the next time Settings is saved. SteamCMD may retain its own cached
-login/session files in its managed workspace. Restored jobs default to anonymous
-access; use **Retry with account** again when needed.
+To retry a failed download with an account, use **Retry with account** in
+Downloads, or enable **Use this account for new downloads this session** in
+Settings. The CLI needs an explicit `--username`; add `--anonymous` to force
+anonymous mode. Passwords and Steam Guard codes are kept in memory only and are
+never written to settings or queue files. For noninteractive scripts, `OSW_PASS`
+can supply a password, but Steam Guard still needs a terminal.
 
 ## Troubleshooting
 
-- **SteamCMD won't start on Linux** — missing 32-bit runtime:
+- **SteamCMD won't start on Linux** — install the 32-bit runtime:
   ```bash
   sudo apt install lib32gcc-s1        # Debian/Ubuntu
   sudo pacman -S lib32-gcc-libs       # Arch
   ```
+- **`osw-gui` is not recognized on Windows** — use
+  `py -m osw.gui.main_window`, or add Python's `Scripts` folder to `PATH`.
+- **No app-menu entry on Linux** — run `osw desktop-install`, then search again.
+  Some desktops need a log-out/log-in before the entry appears.
 - **Access denied / No subscription** — Steam did not grant this login access.
-  You can explicitly retry with an account that has access. Anonymous eligibility
-  varies by game; it is not limited to free games.
-- SteamCMD occasionally no-ops the first download attempt; the app retries
-  automatically.
-- **Some games have no Steam Workshop** (e.g. Cities: Skylines II publishes
-  through Paradox Mods) — the app will tell you when a workshop hub
-  doesn't exist for the game you picked.
+  Retry with an account that owns the game or has Workshop access.
+- **The first download quietly does nothing** — SteamCMD occasionally no-ops the
+  first attempt; the app retries automatically.
+- **The game has no Workshop** — some games publish mods elsewhere (for example
+  Cities: Skylines II uses Paradox Mods); the app reports when a Workshop hub
+  does not exist.
 
-## Development and verification
+## Development
 
 ```bash
+git clone https://github.com/adham-samir/OpenSteamWorkshop.git
+cd OpenSteamWorkshop
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
 pip install -e '.[dev]'
+
 QT_QPA_PLATFORM=offscreen python -m pytest -q
+python -m ruff check osw tests
 ```
 
-The tests use fake SteamCMD processes and fixture metadata: no Steam account,
-game installation, API key or live mod downloads are needed. Before publishing
-a release, manually check an anonymous-compatible public mod and collection,
-plus account/Steam Guard login with an authorized test account.
+Tests use fake SteamCMD processes and fixture metadata: no Steam account, game
+installation, API key or live downloads are needed.
 
-## Legal / ethics note
+## Legal and license
 
-Workshop items belong to their authors. This tool is for personal use within
-Steam's terms; don't redistribute other people's content.
+Workshop items belong to their authors. Use this tool for personal use within
+Steam's terms; do not redistribute other people's content.
 
-## License
-
-MIT.
+MIT licensed.
