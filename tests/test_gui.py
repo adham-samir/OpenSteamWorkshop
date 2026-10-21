@@ -140,6 +140,10 @@ def test_failed_game_search_restores_button(window, qapp, monkeypatch):
 
 def test_hub_routes_callbacks_on_main_thread_and_releases_carrier(window, qapp):
     main = threading.get_ident()
+    # Let the window's startup installed-index scan finish so its carrier is gone
+    # before the baseline is measured.
+    pump(qapp, lambda: window._installed_ready)
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
     seen = []
     baseline = len(window.hub.findChildren(Async))
     window.hub.call(
