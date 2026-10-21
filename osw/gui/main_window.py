@@ -1,4 +1,4 @@
-"""OpenSteamWorkshop — Transfer Desk shell.
+"""OpenWorkshop — Transfer Desk shell.
 
 MainWindow (QMainMenu) is the stable entry point: the shell/controller owning
 the async Hub, the download manager, request generations, and navigation state.
@@ -292,7 +292,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, queue_path=None):
         super().__init__()
-        self.setWindowTitle("OpenSteamWorkshop")
+        self.setWindowTitle("OpenWorkshop")
         self.resize(1150, 740)
         self.setMinimumSize(960, 640)
 
@@ -566,7 +566,7 @@ class MainWindow(QMainWindow):
         self.page_stack.setCurrentWidget(page)
         self.nav.set_active(key)
         self.workspace_label.setText({"games": "Games", "browse": "Browse mods", "imports": "Import links", "library": "Installed", "downloads": "Downloads", "settings": "Settings"}[key])
-        self.setWindowTitle("OpenSteamWorkshop — " + key.title())
+        self.setWindowTitle("OpenWorkshop — " + key.title())
         if key == "settings":
             self._load_settings()
         if key == "library":
@@ -797,7 +797,7 @@ class MainWindow(QMainWindow):
         self.nav.set_game_context(self.current_game)
         self.library.set_game_context(self.current_game)
         self.browse.game_search.setText(name)
-        self.setWindowTitle(f"OpenSteamWorkshop — {name}")
+        self.setWindowTitle(f"OpenWorkshop — {name}")
         self.browse.set_browser_enabled(True)
         self._remember_game(self.current_game)
         self._do_browse()
@@ -1838,7 +1838,7 @@ class MainWindow(QMainWindow):
         self.settings_page.set_desktop_installed(True)
         self.settings_page.confirm_saved("Added to the application menu")
         self.statusBar().showMessage(
-            "Added OpenSteamWorkshop to the application menu", 5000
+            "Added OpenWorkshop to the application menu", 5000
         )
 
     def _remove_desktop_entry(self) -> None:
@@ -1852,7 +1852,7 @@ class MainWindow(QMainWindow):
         self.settings_page.set_desktop_installed(False)
         self.settings_page.confirm_saved("Removed from the application menu")
         self.statusBar().showMessage(
-            "Removed OpenSteamWorkshop from the application menu", 5000
+            "Removed OpenWorkshop from the application menu", 5000
         )
 
     # ------------------------------------------------------------------ misc
@@ -1873,8 +1873,8 @@ class MainWindow(QMainWindow):
 
 def run() -> int:
     app = QApplication.instance() or QApplication([])
-    app.setApplicationName("OpenSteamWorkshop")
-    app.setDesktopFileName("opensteamworkshop")
+    app.setApplicationName("OpenWorkshop")
+    app.setDesktopFileName("openworkshop")
     app.setStyle("Fusion")
     theme.apply_theme()
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -1882,7 +1882,7 @@ def run() -> int:
     if not lock.tryLock(0):
         QMessageBox.warning(
             None,
-            "OpenSteamWorkshop is running",
+            "OpenWorkshop is running",
             "Another window already owns the saved download queue.",
         )
         return 1

@@ -60,6 +60,20 @@ def test_games_use_only_real_personal_history(qapp):
     assert opened == [10]
 
 
+def test_changing_sort_requests_workshop_results(window, monkeypatch):
+    window.current_game = Game(4000, "Garry's Mod")
+    window.browse.set_browser_enabled(True)
+    request = Mock()
+    monkeypatch.setattr(window, "_request", request)
+
+    window.browse.sortCombo.setCurrentIndex(window.browse.sortCombo.findData("toprated"))
+
+    assert window.browse.current_sort() == "toprated"
+    assert window._browse_loading
+    assert request.call_count == 1
+    assert request.call_args.args[0] == "browse"
+
+
 def test_game_context_restores_query_page_selection_art_and_dismissal(window, qapp):
     window.games = [Game(10, "Alpha"), Game(20, "Beta")]
     window._select_app(10)

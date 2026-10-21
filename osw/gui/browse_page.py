@@ -818,7 +818,7 @@ class BrowsePage(QWidget):
         self.hero.import_requested.connect(self.import_requested.emit)
         self.hero.game_requested.connect(self.app_picked.emit)
         self.modSearchEdit.returnPressed.connect(self.workshop_change_requested.emit)
-        self.sortCombo.currentIndexChanged.connect(self.sort_change_requested.emit)
+        self.sortCombo.currentIndexChanged.connect(lambda _index: self.sort_change_requested.emit())
         self.prevBtn.clicked.connect(lambda: self.page_requested.emit(-1))
         self.nextBtn.clicked.connect(lambda: self.page_requested.emit(+1))
         self.bulk_bar.download_btn.clicked.connect(

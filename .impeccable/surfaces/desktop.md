@@ -1,4 +1,4 @@
-# Desktop surface — OpenSteamWorkshop
+# Desktop surface — OpenWorkshop
 
 Status: implemented native PySide6 workspace. The approved Thunderstore/Gale
 reference informs its game focus, charcoal palette, soft white text, restrained

@@ -1,8 +1,8 @@
-# Product Context — OpenSteamWorkshop
+# Product Context — OpenWorkshop
 
 ## What this product is
 
-OpenSteamWorkshop is a Linux-first native desktop app for finding Steam games,
+OpenWorkshop is a Linux-first native desktop app for finding Steam games,
 browsing their Workshop catalogues, reviewing content, and downloading it with
 Valve's official SteamCMD without installing the game. The same engine is
 available through the `osw` CLI. It is a game-focused download workspace, not a

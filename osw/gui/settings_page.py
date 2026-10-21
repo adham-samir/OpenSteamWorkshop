@@ -94,7 +94,7 @@ class SettingsPage(QWidget):
         self.parallel_spin.setAccessibleName("Concurrent downloads")
         downloads.addRow("Concurrent games", self.parallel_spin)
         self.steamcmd_edit = QLineEdit()
-        self.steamcmd_edit.setPlaceholderText("Automatic — managed by OpenSteamWorkshop")
+        self.steamcmd_edit.setPlaceholderText("Automatic — managed by OpenWorkshop")
         self.steamcmd_edit.setAccessibleName("SteamCMD folder")
         downloads.addRow("SteamCMD folder", self.steamcmd_edit)
 
@@ -117,14 +117,14 @@ class SettingsPage(QWidget):
         self.desktop_status.setWordWrap(True)
         self.desktop_status.setProperty("role", "muted")
         self.desktop_btn = QPushButton("Add to app menu")
-        self.desktop_btn.setAccessibleName("Add OpenSteamWorkshop to the application menu")
+        self.desktop_btn.setAccessibleName("Add OpenWorkshop to the application menu")
         self.desktop_btn.clicked.connect(self._toggle_desktop)
         integration.addRow(self.desktop_status, self.desktop_btn)
         self.note = QLabel("Changes apply to new jobs. Running jobs keep their current settings.")
         self.note.setWordWrap(True)
         self.note.setProperty("role", "muted")
         v.addWidget(self.note)
-        self.version_label = QLabel(f"OpenSteamWorkshop {__version__}")
+        self.version_label = QLabel(f"OpenWorkshop {__version__}")
         self.version_label.setProperty("role", "muted")
         self.version_label.setAccessibleName("Application version")
         v.addWidget(self.version_label)
@@ -188,17 +188,17 @@ class SettingsPage(QWidget):
             return
         if self._desktop_installed:
             self.desktop_status.setText(
-                "Installed — search for OpenSteamWorkshop in your app menu."
+                "Installed — search for OpenWorkshop in your app menu."
             )
             self.desktop_btn.setText("Remove from app menu")
             self.desktop_btn.setAccessibleName(
-                "Remove OpenSteamWorkshop from the application menu"
+                "Remove OpenWorkshop from the application menu"
             )
         else:
             self.desktop_status.setText("Not in the application menu.")
             self.desktop_btn.setText("Add to app menu")
             self.desktop_btn.setAccessibleName(
-                "Add OpenSteamWorkshop to the application menu"
+                "Add OpenWorkshop to the application menu"
             )
 
     def _toggle_desktop(self) -> None:

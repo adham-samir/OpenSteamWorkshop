@@ -68,7 +68,7 @@ def test_settings_open_and_preserve_manager(window):
     window._open_settings()
     assert window.workspace == "settings"
     page = window.settings
-    assert page.version_label.text() == f"OpenSteamWorkshop {__version__}"
+    assert page.version_label.text() == f"OpenWorkshop {__version__}"
     page.root_edit.setText(str(job.dest / "new"))
     page.user_edit.setText("user")
     page.password_edit.setText("session-secret")

@@ -1,0 +1,219 @@
+{
+  "captured_at": "2026-10-21T22:22:52.719623+00:00",
+  "source": "Visible app window captured by KDE Spectacle",
+  "platform": "xcb",
+  "window_size": [
+    1440,
+    900
+  ],
+  "screenshots": [
+    "openworkshop-games.png",
+    "openworkshop-browse.png",
+    "openworkshop-details.png"
+  ],
+  "game_search": "Garry",
+  "games": [
+    {
+      "appid": 4000,
+      "name": "Garry's Mod",
+      "artwork_url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/4000/2e52d9b905feebfdaaf2db6ad7afece10991d504/capsule_231x87.jpg?t=1776868682"
+    },
+    {
+      "appid": 3704020,
+      "name": "Rollin' Garry",
+      "artwork_url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3704020/93a70c4640bd6db81c8e3836438135f0f3b4214e/capsule_231x87.jpg?t=1770909638"
+    },
+    {
+      "appid": 3068990,
+      "name": "The Last Bug - Garry skin Joker",
+      "artwork_url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3068990/72e943e5192cd10851b582f3385ddfaa2b9e7d94/capsule_231x87.jpg?t=1734493228"
+    }
+  ],
+  "game": {
+    "appid": 4000,
+    "name": "Garry's Mod"
+  },
+  "workshop_url": "https://steamcommunity.com/workshop/browse/?appid=4000&browsesort=toprated",
+  "items": [
+    {
+      "id": 3780178294,
+      "title": "Viewfinder - Found Footage & Camcorder SWEP",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3780178294",
+      "artwork_url": "https://images.steamusercontent.com/ugc/15233037777991874872/9A41786EAB100BE95E73D2331A63968F0CF705D5/"
+    },
+    {
+      "id": 3697821265,
+      "title": "Tactical Commander Mode",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3697821265",
+      "artwork_url": "https://images.steamusercontent.com/ugc/16923898133300573039/D4A4CCD9735A92D3E7E3B558A261711D4EA596BB/"
+    },
+    {
+      "id": 3415418882,
+      "title": "Restore Position (Context Menu)",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3415418882",
+      "artwork_url": "https://images.steamusercontent.com/ugc/40070177346676739/B38ECA12974173F71D101A9816422592C9E91B8A/"
+    },
+    {
+      "id": 3752650127,
+      "title": "Infinity Pools",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3752650127",
+      "artwork_url": "https://images.steamusercontent.com/ugc/11058738981233814769/7DCC8A19E59B2D6DF70628F232BFF3353EEF4355/"
+    },
+    {
+      "id": 3606384767,
+      "title": "HOPIUM",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3606384767",
+      "artwork_url": "https://images.steamusercontent.com/ugc/9414821350156110445/7714A95AAC220C03DCEEC8A374FDCA5AF4CCB3B4/"
+    },
+    {
+      "id": 3705662940,
+      "title": "gPeek - Addon Inspector",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3705662940",
+      "artwork_url": "https://images.steamusercontent.com/ugc/12291580877745359398/EEEBEEBC4F40FEF79D76DB9CAC40566665BA641F/"
+    },
+    {
+      "id": 3517432900,
+      "title": "Redundant File Finder",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3517432900",
+      "artwork_url": "https://images.steamusercontent.com/ugc/14050566578795491505/6A138AA231F9CDC8CC187098CA195064689FBF84/"
+    },
+    {
+      "id": 3760260083,
+      "title": "Combat Intelligence AI",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3760260083",
+      "artwork_url": "https://images.steamusercontent.com/ugc/14019222003869899819/51BF0D384866B66BEC5F09628CAE922562850039/"
+    },
+    {
+      "id": 3598405438,
+      "title": "1/10000 Chance for a Skeleton to Run Across Your Screen Every Second",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3598405438",
+      "artwork_url": "https://images.steamusercontent.com/ugc/16252498933247210815/1C9C314A790C10B43500427A94B3570235C9CF74/"
+    },
+    {
+      "id": 3681923203,
+      "title": "Throwable Angry Birds",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3681923203",
+      "artwork_url": "https://images.steamusercontent.com/ugc/9822323256472992767/0D5A7AB3FD11508A5A10C9C4C7BCAAA183F78CC9/"
+    },
+    {
+      "id": 3459525275,
+      "title": "D/GL4: Customizable Holographic HUD",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3459525275",
+      "artwork_url": "https://images.steamusercontent.com/ugc/16749665897703523036/87A4FBADF46C4DCF992F8AEB060DA0D4474B7A32/"
+    },
+    {
+      "id": 3490077632,
+      "title": "Postal 2 Petition: Yes I'am The Real Garry! Achievement",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3490077632",
+      "artwork_url": "https://images.steamusercontent.com/ugc/12758334840438086180/E44E11FFA04C6CE39D2940D5C75019EBC190D720/"
+    },
+    {
+      "id": 3585199550,
+      "title": "Hotline Miami-Styled Chat",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3585199550",
+      "artwork_url": "https://images.steamusercontent.com/ugc/15509380916568654934/20D8630CBE0C31D514C992B8DEFD4A056DF03A9E/"
+    },
+    {
+      "id": 3380298728,
+      "title": "Source Shadows",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3380298728",
+      "artwork_url": "https://images.steamusercontent.com/ugc/7414821344806986/313839552A280DE5E28485447ACC06BF3EE044B3/"
+    },
+    {
+      "id": 3418671232,
+      "title": "Beds",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3418671232",
+      "artwork_url": "https://images.steamusercontent.com/ugc/18359965290914693381/A950681DA740091B2BBAB4DA2EF331468DDA2082/"
+    },
+    {
+      "id": 3683050361,
+      "title": "gm_moebius | Underground Map",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3683050361",
+      "artwork_url": "https://images.steamusercontent.com/ugc/9875953407908201158/00B98C23AFC16A19B033711E5E36AC7F022AAD9A/"
+    },
+    {
+      "id": 3603037872,
+      "title": "gm_flux2 | Abstract Map Sequel",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3603037872",
+      "artwork_url": "https://images.steamusercontent.com/ugc/17406763887921818575/E3FAF5426239C4EFD0DCF5A35DDFA7B0CF45CF07/"
+    },
+    {
+      "id": 3680595682,
+      "title": "The Lost Temple | Lego Adventure Map",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3680595682",
+      "artwork_url": "https://images.steamusercontent.com/ugc/13373012457897290613/6615CC275DD8E19AC719AC65600F94D3A598F245/"
+    },
+    {
+      "id": 3392228679,
+      "title": "Blur and Darken on Death",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3392228679",
+      "artwork_url": "https://images.steamusercontent.com/ugc/17552812835811357/B7724DE4FC8065825BA48AB86DD634B7030CB346/"
+    },
+    {
+      "id": 3732957756,
+      "title": "Garry's Mod Removed Props & Playermodels + Unused Content",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3732957756",
+      "artwork_url": "https://images.steamusercontent.com/ugc/11439912325523732832/42AC373BFC4E1D54DB21094CA8FD1D0AE51548A3/"
+    },
+    {
+      "id": 3403011596,
+      "title": "\"Get a load of this Guy!\" [Dupe]",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3403011596",
+      "artwork_url": "https://images.steamusercontent.com/ugc/5166011148181254/68DF7ECBFC3D9E78A05A6AA1FD1DE886770DF037/"
+    },
+    {
+      "id": 3450250071,
+      "title": "Stelliferous",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3450250071",
+      "artwork_url": "https://images.steamusercontent.com/ugc/16431529700273070/60036C184A3B58DDE957A6D1A8A770AE92788CD3/"
+    },
+    {
+      "id": 3630512432,
+      "title": "AFK Camera Effects",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3630512432",
+      "artwork_url": "https://images.steamusercontent.com/ugc/14315045854229033121/16B057A7E8141A845D414D920FD3AA61F6F7B6FA/"
+    },
+    {
+      "id": 3549422138,
+      "title": "Global Aggro (Target Players / NPC War)",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3549422138",
+      "artwork_url": "https://images.steamusercontent.com/ugc/17723545279562674955/8FC6570C61739350C9AB1DA6641FBCF4BBFE50C7/"
+    },
+    {
+      "id": 3562715295,
+      "title": "G ZEUS [BETA]",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3562715295",
+      "artwork_url": "https://images.steamusercontent.com/ugc/14868508658727007221/DBD7778BB0883F1F752A6DC646F3B09E3DB0F32A/"
+    },
+    {
+      "id": 3320656757,
+      "title": "Gordon Freeman Restored (PM/NPC)",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3320656757",
+      "artwork_url": "https://images.steamusercontent.com/ugc/16428277776809618/18F47019BBC8FCDF6F6A6EF094A58E04D11A2122/"
+    },
+    {
+      "id": 3757899436,
+      "title": "OfflineCOOP: Splitscreen",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3757899436",
+      "artwork_url": "https://images.steamusercontent.com/ugc/11236189822345801758/120B2C9DBBE747ABC808DF7EE82B812DDD4FFECC/"
+    },
+    {
+      "id": 3673818635,
+      "title": "CASTE Graffiti Playermodel + NPC",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3673818635",
+      "artwork_url": "https://images.steamusercontent.com/ugc/13940373229367712119/3DC6DC4D6BFF2B1670F0DA68F47921A0BDE8DFE1/"
+    },
+    {
+      "id": 973145750,
+      "title": "Addon Share",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=973145750",
+      "artwork_url": "https://images.steamusercontent.com/ugc/840335682675177460/69B8C2386439E1EE6BB27E61AE197B6A1D198556/"
+    },
+    {
+      "id": 3643773344,
+      "title": "Epic Vehicle Collision Fix",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3643773344",
+      "artwork_url": "https://images.steamusercontent.com/ugc/14120162592440951951/24185348AC26FBB2E954B0706D6CDB12E19D6C08/"
+    }
+  ]
+}

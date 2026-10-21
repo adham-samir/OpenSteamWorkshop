@@ -1,10 +1,13 @@
-"""Capture deterministic desktop review fixtures; no downloads or network requests.
+"""Capture native desktop screenshots.
 
+Live Steam data and visible KDE window:
+QT_QPA_PLATFORM=xcb .venv/bin/python tools/capture_ui.py --live --desktop
+
+Offline layout fixtures:
 QT_QPA_PLATFORM=offscreen .venv/bin/python tools/capture_ui.py --art-dir /tmp
-Set QT_SCALE_FACTOR=2 and --suffix @2x for the high-DPI pass.
-Artwork files, when supplied: osw-garry.jpg, osw-rimworld.jpg,
-osw-wiremod.jpg and osw-pac3.jpg (Steam game / Workshop artwork).
-The library, queue, counts and long titles in captures are illustrative fixtures.
+Set QT_SCALE_FACTOR=2 and --suffix @2x for the high-DPI fixture pass.
+Fixture artwork: osw-garry.jpg, osw-rimworld.jpg, osw-wiremod.jpg, osw-pac3.jpg.
+Only fixture mode supplies illustrative library, queue, counts, and titles.
 """
 from __future__ import annotations
 
@@ -14,7 +17,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if "--desktop" not in sys.argv:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from PySide6.QtCore import QItemSelectionModel
@@ -35,7 +39,16 @@ def main():
     parser.add_argument("--art-dir", type=Path, default=Path("/tmp"))
     parser.add_argument("--out", type=Path, default=Path(".impeccable/review"))
     parser.add_argument("--suffix", default="")
+    parser.add_argument("--live", action="store_true", help="Capture real public Workshop data")
+    parser.add_argument("--desktop", action="store_true", help="Use a visible desktop window and KDE Spectacle")
     args = parser.parse_args()
+    if args.desktop and not args.live:
+        parser.error("--desktop requires --live")
+    if args.live:
+        from capture_live_ui import capture_live
+
+        capture_live(args.out, desktop=args.desktop)
+        return
     args.out.mkdir(parents=True, exist_ok=True)
     settings.CONFIG_DIR = Path("/tmp/osw-ui-capture")
     settings.CONFIG_FILE = settings.CONFIG_DIR / "settings.json"

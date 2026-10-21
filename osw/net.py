@@ -8,7 +8,9 @@ import json
 import threading
 import urllib.parse
 
-USER_AGENT = "OpenSteamWorkshop/0.1 (desktop Workshop browser)"
+from . import __version__
+
+USER_AGENT = f"OpenWorkshop/{__version__} (desktop Workshop browser)"
 
 
 class NetError(RuntimeError):

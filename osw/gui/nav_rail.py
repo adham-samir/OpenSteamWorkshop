@@ -97,7 +97,7 @@ class NavRail(QFrame):
             f"border: 1px solid {theme.ACCENT};"
         )
         brand_lay.addWidget(badge)
-        self.brand_label = QLabel("OpenSteamWorkshop")
+        self.brand_label = QLabel("OpenWorkshop")
         self.brand_label.setObjectName("brandName")
         brand_lay.addWidget(self.brand_label, 1)
         outer.addWidget(brand)

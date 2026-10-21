@@ -7,9 +7,9 @@ name: Publish
 # under `on:` to publish every v* release automatically.
 #
 # One-time setup: add a pending publisher on PyPI for
-#   project: opensteamworkshop
+#   project: openworkshop
 #   owner:   adham-samir
-#   repo:    OpenSteamWorkshop
+#   repo:    openworkshop
 #   workflow: publish.yml
 #   environment: pypi
 on:
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/opensteamworkshop
+      url: https://pypi.org/p/openworkshop
     permissions:
       id-token: write
     steps:

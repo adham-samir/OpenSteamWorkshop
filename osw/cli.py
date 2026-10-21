@@ -1,4 +1,4 @@
-"""CLI: `osw` command. Human-friendly console frontend for the API + steamcmd."""
+"""CLI: `openworkshop` command. Human-friendly console frontend for the API + steamcmd."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def cmd_search(args) -> int:
     for g in games:
         _p(f"{g.appid:>10}  {g.name}")
     if games:
-        _p(f"\nTip: osw browse {games[0].appid}  to list its workshop mods")
+        _p(f"\nTip: openworkshop browse {games[0].appid}  to list its workshop mods")
     return EXIT_OK
 
 
@@ -81,7 +81,7 @@ def cmd_browse(args) -> int:
         stars = f"★{it.star_rating:.1f}" if it.star_rating else "-"
         print(f"{it.publishedfileid:>11} {size:>9} {subs:>10} {stars:>5}  {it.title}")
     _p(
-        f"\nTip: osw info {items[0].publishedfileid} | osw download {appid} {items[0].publishedfileid}"
+        f"\nTip: openworkshop info {items[0].publishedfileid} | openworkshop download {appid} {items[0].publishedfileid}"
     )
     return EXIT_OK
 
@@ -235,11 +235,11 @@ def cmd_desktop_install(args) -> int:
         print(entry_text())
         return EXIT_OK
     entry, icon = install_desktop_entry()
-    _p("Installed the OpenSteamWorkshop application-menu entry:")
+    _p("Installed the OpenWorkshop application-menu entry:")
     _p(f"  {entry}")
     _p(f"  {icon}")
     _p(
-        "Search for OpenSteamWorkshop in your application menu; "
+        "Search for OpenWorkshop in your application menu; "
         "log out and back in if it is not there yet."
     )
     return EXIT_OK
@@ -348,7 +348,7 @@ def cmd_cleanup(args) -> int:
     )
     if not args.prune:
         if safe:
-            print("Run `osw cleanup --prune` to remove the recommended default copies.")
+            print("Run `openworkshop cleanup --prune` to remove the recommended default copies.")
         return EXIT_OK
 
     removed = 0
@@ -440,10 +440,10 @@ def _build_manager(args) -> DownloadManager:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="osw",
+        prog="openworkshop",
         description="Browse and download Steam Workshop content.",
     )
-    p.add_argument("--version", action="version", version=f"osw {__version__}")
+    p.add_argument("--version", action="version", version=f"OpenWorkshop {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("search", help="search the steam store for games")

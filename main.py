@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the OpenSteamWorkshop GUI: `python main.py`."""
+"""Launch the OpenWorkshop GUI: `python main.py`."""
 
 import sys
 

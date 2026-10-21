@@ -12,8 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_ID = "opensteamworkshop"
-APP_NAME = "OpenSteamWorkshop"
+APP_ID = "openworkshop"
+LEGACY_APP_ID = "opensteamworkshop"
+APP_NAME = "OpenWorkshop"
 APP_COMMENT = "Browse and download Steam Workshop content without installing the game"
 
 
@@ -50,7 +51,7 @@ def icon_path() -> Path:
 
 
 def entry_installed() -> bool:
-    return entry_path().is_file()
+    return entry_path().is_file() or (applications_dir() / f"{LEGACY_APP_ID}.desktop").is_file()
 
 
 def _icon_source() -> Path:
@@ -71,12 +72,14 @@ def gui_command() -> str:
     Sibling entry points win because PATH may point at a different install;
     the module invocation keeps venv and pipx installs working either way.
     """
-    sibling = Path(sys.executable).with_name("osw-gui")
-    if sibling.is_file():
-        return _exec_quote(str(sibling))
-    found = shutil.which("osw-gui")
-    if found:
-        return _exec_quote(found)
+    for name in ("openworkshop-gui", "osw-gui"):
+        sibling = Path(sys.executable).with_name(name)
+        if sibling.is_file():
+            return _exec_quote(str(sibling))
+    for name in ("openworkshop-gui", "osw-gui"):
+        found = shutil.which(name)
+        if found:
+            return _exec_quote(found)
     return f"{_exec_quote(sys.executable or 'python3')} -m osw.gui.main_window"
 
 
@@ -138,8 +141,17 @@ def install_desktop_entry() -> tuple[Path, Path]:
     entry = entry_path()
     entry.parent.mkdir(parents=True, exist_ok=True)
     entry.write_text(entry_text(), encoding="utf-8")
+    for legacy in _legacy_paths():
+        legacy.unlink(missing_ok=True)
     _refresh_databases()
     return entry, icon
+
+
+def _legacy_paths() -> tuple[Path, Path]:
+    return (
+        applications_dir() / f"{LEGACY_APP_ID}.desktop",
+        icon_path().with_name(f"{LEGACY_APP_ID}.svg"),
+    )
 
 
 def uninstall_desktop_entry() -> list[Path]:
@@ -147,7 +159,7 @@ def uninstall_desktop_entry() -> list[Path]:
     if not desktop_supported():
         raise OSError("application-menu integration is only available on Linux")
     removed: list[Path] = []
-    for path in (entry_path(), icon_path()):
+    for path in (entry_path(), icon_path(), *_legacy_paths()):
         try:
             path.unlink()
         except FileNotFoundError:

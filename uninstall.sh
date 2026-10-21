@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Remove an OpenSteamWorkshop installation created by install.sh.
-#
+# Remove an OpenWorkshop installation created by install.sh.
 # Settings, the download queue and your mods are left untouched.
 set -euo pipefail
 
@@ -11,15 +10,19 @@ BIN_DIR="$HOME/.local/bin"
 
 say() { printf '%s\n' "$*"; }
 
-if [ -x "$VENV/bin/osw" ]; then
-  "$VENV/bin/osw" desktop-uninstall || true
-fi
+for command in openworkshop osw; do
+  if [ -x "$VENV/bin/$command" ]; then
+    "$VENV/bin/$command" desktop-uninstall || true
+    break
+  fi
+done
 
 # Idempotent fallback in case the venv or CLI is already gone.
-rm -f "$DATA_HOME/applications/opensteamworkshop.desktop"
-rm -f "$DATA_HOME/icons/hicolor/scalable/apps/opensteamworkshop.svg"
-
-for name in osw osw-gui; do
+for app_id in openworkshop opensteamworkshop; do
+  rm -f "$DATA_HOME/applications/$app_id.desktop"
+  rm -f "$DATA_HOME/icons/hicolor/scalable/apps/$app_id.svg"
+done
+for name in openworkshop openworkshop-gui osw osw-gui; do
   link="$BIN_DIR/$name"
   if [ -L "$link" ]; then
     target="$(readlink "$link")"
@@ -28,8 +31,7 @@ for name in osw osw-gui; do
     esac
   fi
 done
-
 rm -rf "$INSTALL_DIR"
 
-say "Removed OpenSteamWorkshop."
+say "Removed OpenWorkshop."
 say "Your settings, download queue and mods were left untouched."

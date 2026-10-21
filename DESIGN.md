@@ -1,5 +1,5 @@
 ---
-name: OpenSteamWorkshop
+name: OpenWorkshop
 description: A game-focused native desktop workspace for Workshop discovery and downloads.
 colors:
   background: "#141619"
@@ -98,7 +98,7 @@ components:
     rounded: "{rounded.panel}"
 ---
 
-# Design System: OpenSteamWorkshop
+# Design System: OpenWorkshop
 
 ## Overview
 

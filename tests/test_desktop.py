@@ -24,9 +24,9 @@ def data_home(tmp_path, monkeypatch):
 def test_install_writes_entry_and_icon(data_home):
     entry, icon = desktop.install_desktop_entry()
 
-    assert entry == data_home / "applications" / "opensteamworkshop.desktop"
+    assert entry == data_home / "applications" / "openworkshop.desktop"
     assert icon == (
-        data_home / "icons" / "hicolor" / "scalable" / "apps" / "opensteamworkshop.svg"
+        data_home / "icons" / "hicolor" / "scalable" / "apps" / "openworkshop.svg"
     )
     assert entry.is_file()
     assert icon.is_file()
@@ -34,12 +34,12 @@ def test_install_writes_entry_and_icon(data_home):
 
     text = entry.read_text(encoding="utf-8")
     assert "[Desktop Entry]" in text
-    assert "Name=OpenSteamWorkshop" in text
+    assert "Name=OpenWorkshop" in text
     assert "Exec=" in text
-    assert "osw-gui" in text or "-m osw.gui.main_window" in text
+    assert "openworkshop-gui" in text or "osw-gui" in text or "-m osw.gui.main_window" in text
     assert f"Icon={icon}" in text
     assert "Terminal=false" in text
-    assert "StartupWMClass=OpenSteamWorkshop" in text
+    assert "StartupWMClass=OpenWorkshop" in text
     assert desktop.entry_installed()
 
 
@@ -72,6 +72,50 @@ def test_gui_command_falls_back_to_module(monkeypatch, tmp_path):
     monkeypatch.setattr(desktop.shutil, "which", lambda name: None)
 
     assert desktop.gui_command() == f"{fake} -m osw.gui.main_window"
+
+
+def test_install_replaces_legacy_launcher_and_preserves_other_entries(data_home):
+    legacy_entry, legacy_icon = desktop._legacy_paths()
+    legacy_entry.parent.mkdir(parents=True)
+    legacy_icon.parent.mkdir(parents=True)
+    legacy_entry.write_text("Name=OpenSteamWorkshop", encoding="utf-8")
+    legacy_icon.write_text("old icon", encoding="utf-8")
+    other = legacy_entry.with_name("other.desktop")
+    other.write_text("keep me", encoding="utf-8")
+
+    assert desktop.entry_installed()
+    desktop.install_desktop_entry()
+
+    assert not legacy_entry.exists()
+    assert not legacy_icon.exists()
+    assert other.read_text(encoding="utf-8") == "keep me"
+    assert desktop.entry_path().is_file()
+
+
+def test_uninstall_removes_legacy_only_installation(data_home):
+    legacy_entry, legacy_icon = desktop._legacy_paths()
+    for path in (legacy_entry, legacy_icon):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("legacy", encoding="utf-8")
+
+    assert desktop.entry_installed()
+    assert set(desktop.uninstall_desktop_entry()) == {legacy_entry, legacy_icon}
+    assert not desktop.entry_installed()
+
+
+@pytest.mark.parametrize("commands, chosen", [
+    (("openworkshop-gui", "osw-gui"), "openworkshop-gui"),
+    (("osw-gui",), "osw-gui"),
+])
+def test_gui_command_prefers_own_installation(monkeypatch, tmp_path, commands, chosen):
+    fake = tmp_path / "python3"
+    fake.touch()
+    for command in commands:
+        (tmp_path / command).touch()
+    monkeypatch.setattr(desktop.sys, "executable", str(fake))
+    monkeypatch.setattr(desktop.shutil, "which", lambda name: f"/other/bin/{name}")
+
+    assert desktop.gui_command() == str(tmp_path / chosen)
 
 
 def test_cli_desktop_install_print_does_not_write(data_home, capsys):
