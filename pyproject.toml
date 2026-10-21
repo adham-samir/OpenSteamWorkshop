@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opensteamworkshop"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A desktop GUI for browsing and downloading Steam Workshop content"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "doma" }]
 dependencies = ["PySide6>=6.6"]
 
@@ -21,6 +21,9 @@ osw-gui = "osw.gui.main_window:run"
 
 [tool.setuptools.packages.find]
 include = ["osw*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "osw.__version__" }
 
 [tool.setuptools.package-data]
 "osw.gui" = ["icons/*.svg"]
