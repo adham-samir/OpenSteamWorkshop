@@ -64,6 +64,7 @@ from .browse_page import MODE_GRID, MODE_HERO, MODE_RESULTS, BrowsePage
 from .downloads_page import DownloadsPage
 from .imports_page import ImportPage
 from .library import (
+    InstalledIndex,
     content_dir,
     delete_installed_item,
     fetch_installed_metadata,
@@ -294,6 +295,9 @@ class MainWindow(QMainWindow):
         self._job_snapshots: dict[str, JobSnapshot] = {}
         self._job_rows: dict[str, _JobRowCompat] = {}
         self.state = AppState()
+        self.installed = InstalledIndex()
+        self._installed_ready = False
+        self._installed_generation = 0
         self._library_scan_generation = 0
         self._library_scan_cancel = threading.Event()
         self._library_meta_cancel = threading.Event()
@@ -312,6 +316,7 @@ class MainWindow(QMainWindow):
         self.authEvent.connect(self._show_auth, Qt.QueuedConnection)
 
         self._build_ui()
+        self._refresh_installed_index()
         for job in self.manager.jobs:
             self._on_job_ui(job.snapshot())
         self.update_strip()
@@ -951,6 +956,12 @@ class MainWindow(QMainWindow):
             self._open_bulk(item.url)
             return
         self._ensure_manager_settings()
+        hit = self._installed_for_queue().lookup(item.appid, item.publishedfileid)
+        if hit is not None and not self._confirm_reinstall(hit):
+            self.statusBar().showMessage(
+                f"{item.title or item.publishedfileid}: already installed — skipped", 5000
+            )
+            return
         name = (
             self.current_game.name
             if self.current_game and self.current_game.appid == item.appid
@@ -958,7 +969,10 @@ class MainWindow(QMainWindow):
         )
         try:
             job = self.manager.add(
-                item, name, deliver_to=self._resolve_deliver_to(item.appid)
+                item,
+                name,
+                deliver_to=self._resolve_deliver_to(item.appid),
+                reinstall=hit is not None,
             )
             message = f"{job.title}: {job.state.value}"
             if job.deliver_to is not None:
@@ -967,6 +981,57 @@ class MainWindow(QMainWindow):
             self._on_job_ui(job.snapshot())
         except (ValueError, OSError) as exc:
             self.on_error(str(exc))
+
+    def _confirm_reinstall(self, hit) -> bool:
+        """Ask before re-downloading an item that is already on disk."""
+        answer = QMessageBox.question(
+            self,
+            "Already installed",
+            f"{hit.label} is already installed at:\n{hit.path}\n\n"
+            "Download it again and overwrite the installed copy?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _installed_for_queue(self) -> InstalledIndex:
+        """Return the installed index, syncing once if the async scan has not landed."""
+        if not self._installed_ready:
+            self._sync_installed_index()
+        return self.installed
+
+    def _sync_installed_index(self) -> None:
+        self._installed_generation += 1
+        root = Path(get("content_root"))
+        paths = dict(self.state.game_paths)
+        self.installed.content_root = root
+        self.installed.game_paths = paths
+        items = scan_installed(root, None, paths)
+        if items is not None:
+            self.installed.replace(items)
+            self._installed_ready = True
+
+    def _refresh_installed_index(self) -> None:
+        """Rebuild the installed lookup off the UI thread."""
+        self._installed_ready = False
+        self._installed_generation += 1
+        generation = self._installed_generation
+        root = Path(get("content_root"))
+        paths = dict(self.state.game_paths)
+        self.installed.content_root = root
+        self.installed.game_paths = paths
+
+        def done(items):
+            if self._closing or items is None or generation != self._installed_generation:
+                return
+            self.installed.replace(items)
+            self._installed_ready = True
+
+        self.hub.call(
+            lambda: scan_installed(root, None, paths),
+            done,
+            on_error=lambda _exc: None,
+        )
 
     def _ensure_manager_settings(self) -> None:
         self.manager.content_root = Path(get("content_root"))
@@ -1002,6 +1067,12 @@ class MainWindow(QMainWindow):
                 return
             if self.imports.generation == generation:
                 self.imports.resolve_finished(result)
+                locations = {
+                    fileid: item.summary
+                    for fileid, item in self._installed_for_queue().locations().items()
+                }
+                if locations:
+                    self.imports.mark_installed(locations)
             else:
                 self.imports.resolve_cancelled()
 
@@ -1020,7 +1091,9 @@ class MainWindow(QMainWindow):
     def _queue_many(self, items) -> None:
         self._ensure_manager_settings()
         try:
-            jobs = self.manager.add_many(items, deliver_for=self._resolve_deliver_to)
+            jobs = self.manager.add_many(
+                items, deliver_for=self._resolve_deliver_to, reinstall=True
+            )
         except (ValueError, OSError) as exc:
             self.on_error(str(exc))
             self.imports.resolve_button.setEnabled(True)
@@ -1039,6 +1112,13 @@ class MainWindow(QMainWindow):
         self._job_snapshots[job.id] = job
         self._job_rows.setdefault(job.id, _JobRowCompat()).update(job)
         self.downloads.upsert(job)
+        if job.state is JobState.DONE and job.fileid:
+            self.installed.record(
+                job.appid,
+                job.fileid,
+                job.output_path or job.dest,
+                title=job.title,
+            )
         self.update_strip()
 
     def _refresh_jobs(self) -> None:
@@ -1216,6 +1296,8 @@ class MainWindow(QMainWindow):
         if self._closing or generation != self._library_scan_generation or items is None:
             return
         items = list(items)
+        self.installed.replace(items)
+        self._installed_ready = True
         self.library.show_items(items, path)
         self.nav.set_library_count(len(items))
         noun = "item" if len(items) == 1 else "items"
@@ -1354,6 +1436,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Could not delete {item.label}: {exc}", 8000)
             return
         self.library.remove_item(item.fileid)
+        self.installed.remove(item.appid, item.fileid)
         self.nav.set_library_count(self.library.model.rowCount())
         self.statusBar().showMessage(f"Deleted {item.label}", 5000)
 
@@ -1388,6 +1471,7 @@ class MainWindow(QMainWindow):
         self.manager.username = username if use_account else ""
         self.manager.password = password if self.manager.username else ""
         self._refresh_mods_folder()
+        self._refresh_installed_index()
         self.settings_page.confirm_saved()
         self.statusBar().showMessage("Settings saved", 5000)
 

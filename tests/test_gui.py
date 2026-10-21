@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -669,12 +670,12 @@ def test_library_metadata_uses_bounded_batches_and_app_names(monkeypatch, tmp_pa
     ]
     batches = []
     monkeypatch.setattr(
-        "osw.gui.library.get_published_files",
+        "osw.installed.get_published_files",
         lambda ids, cancel: batches.append(list(ids))
         or {fileid: {"title": f"Title {fileid}"} for fileid in ids},
     )
     monkeypatch.setattr(
-        "osw.gui.library.get_app_name",
+        "osw.installed.get_app_name",
         lambda appid, cancel: {4000: "Garry's Mod", 500: "Left 4 Dead 2"}[appid],
     )
 
@@ -737,11 +738,11 @@ def test_library_workspace_navigation_scan_and_metadata(window, qapp, tmp_path, 
     _make_installed(root, 4000, 100, {"mod.txt": b"abc"})
     settings.save({"content_root": str(root)})
     monkeypatch.setattr(
-        "osw.gui.library.get_published_files",
+        "osw.installed.get_published_files",
         lambda ids, cancel: {fileid: {"title": "Wiremod"} for fileid in ids},
     )
     monkeypatch.setattr(
-        "osw.gui.library.get_app_name", lambda appid, cancel: "Garry's Mod"
+        "osw.installed.get_app_name", lambda appid, cancel: "Garry's Mod"
     )
 
     window.navigate("library")
@@ -945,3 +946,88 @@ def test_redownload_and_bulk_queue_use_game_override(window, tmp_path):
     by_id = {queued.fileid: queued for queued in window.manager.jobs}
     assert by_id[101].deliver_to == override.resolve()
     assert by_id[102].deliver_to is None
+
+
+# ---------------------------------------------------------- installed guard
+
+
+def _stage_install(root, appid, fileid):
+    item_dir = content_dir(root) / str(appid) / str(fileid)
+    item_dir.mkdir(parents=True)
+    (item_dir / "mod.txt").write_text("installed")
+    return item_dir
+
+
+def test_single_download_asks_before_reinstalling(window, tmp_path, monkeypatch):
+    root = tmp_path / "mods"
+    item_dir = _stage_install(root, 4000, 100)
+    settings.save({"content_root": str(root)})
+    window._installed_ready = False
+    item = WorkshopItem(100, appid=4000, title="Wiremod")
+
+    prompts = []
+
+    def decline(*args, **kwargs):
+        prompts.append(args[2])
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr("osw.gui.main_window.QMessageBox.question", decline)
+    window._queue_download(item)
+
+    assert prompts and "already installed" in prompts[0].lower()
+    assert str(item_dir) in prompts[0]
+    assert window.manager.jobs == []
+
+    monkeypatch.setattr(
+        "osw.gui.main_window.QMessageBox.question",
+        lambda *a, **k: QMessageBox.StandardButton.Yes,
+    )
+    window._queue_download(item)
+    assert [job.fileid for job in window.manager.jobs] == [100]
+
+
+def test_single_download_queues_normally_when_not_installed(window, tmp_path, monkeypatch):
+    settings.save({"content_root": str(tmp_path / "empty-mods")})
+    window._installed_ready = False
+    monkeypatch.setattr(
+        "osw.gui.main_window.QMessageBox.question",
+        Mock(side_effect=AssertionError("must not ask for a fresh item")),
+    )
+    window._queue_download(WorkshopItem(500, appid=4000, title="New mod"))
+    assert [job.fileid for job in window.manager.jobs] == [500]
+
+
+def test_import_preview_marks_installed_rows(qapp):
+    page = ImportPage()
+    page.resolve_finished(
+        DownloadResolution(
+            items=[
+                WorkshopItem(20, appid=10, title="One"),
+                WorkshopItem(21, appid=10, title="Two"),
+            ]
+        )
+    )
+
+    page.mark_installed({20: "/mods/steamapps/workshop/content/10/20 (Default mods root)"})
+
+    assert page.tmodel.index(0, 0).data(Qt.CheckStateRole) == Qt.Unchecked
+    assert page.tmodel.index(1, 0).data(Qt.CheckStateRole) == Qt.Checked
+    assert page.tmodel.index(0, 3).data(Qt.DisplayRole) == "Installed"
+    assert "already installed" in page.tmodel.index(0, 3).data(Qt.ToolTipRole).lower()
+    assert "1 already installed mod unchecked" in page.summary.text()
+    assert [item.publishedfileid for item in page.tmodel.checked()] == [21]
+
+
+def test_finished_download_records_the_install(window, tmp_path):
+    item_dir = _stage_install(tmp_path / "mods", 4000, 100)
+    job = window.manager.add_direct(4000, 100, title="Wiremod")
+    snapshot = replace(
+        job.snapshot(), state=JobState.DONE, progress=100.0, output_path=str(item_dir)
+    )
+
+    window._on_job_ui(snapshot)
+
+    hit = window.installed.lookup(4000, 100)
+    assert hit is not None
+    assert hit.path == item_dir
+    assert hit.title == "Wiremod"

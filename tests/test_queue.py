@@ -337,3 +337,23 @@ def test_add_deduplicates_per_delivery_folder_and_bulk_resolves_overrides(tmp_pa
     )
     assert jobs[0].deliver_to == (tmp_path / "A").resolve()
     assert jobs[1].deliver_to is None
+
+
+def test_reinstall_reenqueues_a_completed_job(tmp_path, monkeypatch):
+    mgr = manager(tmp_path, monkeypatch)
+    job = mgr.add_direct(10, 20)
+    mgr._queue.get_nowait()  # original enqueue
+    job.state = JobState.DONE
+    job.output_path = str(tmp_path / "mods" / "old")
+    generation = job._generation
+
+    assert mgr.add_direct(10, 20) is job  # plain add keeps the finished job
+    assert job.state is JobState.DONE
+    assert job._generation == generation
+
+    item = WorkshopItem(20, appid=10)
+    assert mgr.add(item, reinstall=True) is job
+    assert job.state is JobState.QUEUED
+    assert job.output_path == ""
+    assert job._generation > generation
+    assert mgr._queue.get_nowait()[1] == job._generation

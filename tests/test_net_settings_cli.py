@@ -168,3 +168,58 @@ def test_cli_batch_requires_input_and_catches_network_errors(monkeypatch):
     assert cli.main(["batch"]) == 1
     monkeypatch.setattr(cli, "search_games", Mock(side_effect=NetError("offline")))
     assert cli.main(["search", "game"]) == 1
+
+
+def test_cli_skips_installed_items_unless_reinstall(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "mods"
+    item_dir = root / "steamapps" / "workshop" / "content" / "10" / "20"
+    item_dir.mkdir(parents=True)
+    (item_dir / "mod.txt").write_text("installed")
+
+    monkeypatch.setattr(
+        cli,
+        "_build_manager",
+        Mock(side_effect=AssertionError("a skipped download must not build the manager")),
+    )
+    assert cli.main(["download", "10", "20", "--out", str(root)]) == 0
+    output = capsys.readouterr().out
+    assert "already installed" in output
+    assert str(item_dir) in output
+    assert "--reinstall" in output
+
+
+def test_cli_reinstall_flag_queues_installed_items(tmp_path, monkeypatch):
+    root = tmp_path / "mods"
+    item_dir = root / "steamapps" / "workshop" / "content" / "10" / "20"
+    item_dir.mkdir(parents=True)
+    (item_dir / "mod.txt").write_text("installed")
+
+    class FakeManager:
+        def __init__(self):
+            self.items = []
+
+        def add_many(self, items):
+            self.items.extend(items)
+            return []
+
+        def shutdown(self):
+            pass
+
+    manager = FakeManager()
+    monkeypatch.setattr(cli, "_build_manager", lambda args: manager)
+
+    assert cli.main(["download", "10", "20", "--out", str(root), "--reinstall"]) == 0
+    assert [item.publishedfileid for item in manager.items] == [20]
+
+    from osw.bulk import DownloadResolution
+    from osw.models import WorkshopItem
+
+    monkeypatch.setattr(
+        cli,
+        "resolve_downloads",
+        lambda references, hint, dependencies: DownloadResolution(
+            items=[WorkshopItem(20, appid=10)]
+        ),
+    )
+    assert cli.main(["batch", "20", "--appid", "10", "--out", str(root), "--reinstall"]) == 0
+    assert [item.publishedfileid for item in manager.items] == [20, 20]

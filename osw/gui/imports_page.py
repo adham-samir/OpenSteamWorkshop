@@ -208,6 +208,18 @@ class ImportPage(QWidget):
         self.resolve_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
 
+    def mark_installed(self, locations: dict[int, str]) -> None:
+        """Rows already present on disk are flagged, unchecked and announced."""
+        if not self.resolution:
+            return
+        matched = self.tmodel.mark_installed(locations)
+        if matched:
+            noun = "mod" if matched == 1 else "mods"
+            self.summary.setText(
+                self.summary.text().rstrip()
+                + f" {matched} already installed {noun} unchecked — re-check to reinstall."
+            )
+
     def resolve_failed(self, message: str) -> None:
         self.summary.setText(message)
         self.resolve_button.setEnabled(True)

@@ -21,6 +21,10 @@ Anonymous downloads also work without owning the game when its publisher permits
   dependencies, and exclude items before queueing.
 - **Recoverable queue**: cancel running jobs, retry failures, open their folders
   and logs, and resume unfinished jobs after restarting the app.
+- **Skips what is already installed**: if a mod is already on disk, the app asks
+  before re-downloading it; the Imports preview flags installed rows and leaves
+  them unchecked unless you re-check them. `osw` skips installed items and
+  prints where they live unless you pass `--reinstall`.
 - **Installed library**: the Library workspace scans your default mods root and
   any per-game mods folders for content already downloaded. See each item's game,
   location (default or delivered), size and modified date; open its folder,
@@ -63,6 +67,8 @@ osw download 108600 3820938264 --out ~/SteamMods
 osw url "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch --input workshop-links.txt --with-dependencies --out ~/SteamMods
+# Already-installed items are skipped; --reinstall downloads them again:
+osw download 108600 3820938264 --reinstall
 # Optional account fallback (password and Steam Guard are prompted when needed):
 osw download 108600 3820938264 --username YOUR_STEAM_USERNAME
 ```
@@ -77,7 +83,9 @@ The optional game ID hint is used only when an item's own metadata lacks its gam
 **Resolve list** fetches metadata, expands nested collections and, if enabled,
 required items. It does not download mod files. Review any invalid/private items
 or unresolved dependencies, uncheck unwanted mods, then choose **Queue selected**.
-Valid items can still be queued when other entries have problems.
+Valid items can still be queued when other entries have problems. Mods that are
+already installed are marked **Installed** and left unchecked — re-check one to
+reinstall it.
 
 SteamCMD jobs run one at a time to avoid workspace/login conflicts. Browsing and
 preview images continue in the background. Cancel stops the running process;

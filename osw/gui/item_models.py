@@ -190,20 +190,47 @@ class ImportPreviewModel(QAbstractTableModel):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.reset()
+        self._rows: list = []  # list[(include: bool, WorkshopItem, str)]
+        self._installed: dict[int, str] = {}  # fileid -> human location
 
     def reset(self) -> None:
         self.beginResetModel()
-        self._rows: list = []  # list[(include: bool, WorkshopItem, str)]
+        self._rows = []
+        self._installed = {}
         self.endResetModel()
 
     def set_resolution(self, result) -> None:
         self.beginResetModel()
+        self._installed = {}
         self._rows = [
             [True, item, "Required" if item.publishedfileid in result.dependencies else "Import"]
             for item in result.items
         ]
         self.endResetModel()
+
+    def mark_installed(self, locations: dict[int, str]) -> int:
+        """Flag already-installed rows and uncheck them; returns how many matched.
+
+        Re-checking a flagged row is an explicit reinstall request.
+        """
+        self._installed = dict(locations)
+        matched = 0
+        for row in self._rows:
+            if row[1].publishedfileid in self._installed:
+                row[0] = False
+                matched += 1
+        if self._rows:
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(len(self._rows) - 1, self.columnCount() - 1),
+            )
+        return matched
+
+    def _source_label(self, row) -> str:
+        _include, item, source = row
+        if item.publishedfileid in self._installed:
+            return f"Installed · {source}" if source != "Import" else "Installed"
+        return source
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self._rows)
@@ -223,13 +250,18 @@ class ImportPreviewModel(QAbstractTableModel):
         col = index.column()
         if role == Qt.ItemDataRole.CheckStateRole and col == 0:
             return Qt.CheckState.Checked if include else Qt.CheckState.Unchecked
+        if role == Qt.ItemDataRole.ToolTipRole:
+            location = self._installed.get(item.publishedfileid)
+            if location:
+                return f"Already installed at {location} — re-check to reinstall"
+            return None
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
             if col == 1:
                 return item.title or f"item {item.publishedfileid}"
             if col == 2:
                 return str(item.appid or "")
             if col == 3:
-                return source
+                return self._source_label(self._rows[index.row()])
             if col == 4:
                 return fmt_size(item.file_size) or "Unknown"
         if role == ItemRole:

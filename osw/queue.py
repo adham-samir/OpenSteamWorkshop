@@ -167,7 +167,7 @@ class DownloadManager:
         client.ensure_installed(log=self.log, cancel=cancel)
         return client
 
-    def add(self, item: WorkshopItem, app_name="", deliver_to=None):
+    def add(self, item: WorkshopItem, app_name="", deliver_to=None, *, reinstall=False):
         dest = Path(self.content_root).expanduser().resolve()
         deliver_to = Path(deliver_to).expanduser().resolve() if deliver_to else None
         with self._lock:
@@ -178,7 +178,14 @@ class DownloadManager:
                     dest,
                     deliver_to,
                 ):
-                    if job.state in (JobState.FAILED, JobState.CANCELLED, JobState.INTERRUPTED):
+                    finished = job.state in (
+                        JobState.FAILED,
+                        JobState.CANCELLED,
+                        JobState.INTERRUPTED,
+                    )
+                    if finished or (reinstall and job.state is JobState.DONE):
+                        if reinstall:
+                            job.output_path = ""
                         self.retry(job.id)
                     return job
             job = DownloadJob(
@@ -203,7 +210,7 @@ class DownloadManager:
             deliver_to=deliver_to,
         )
 
-    def add_many(self, items, deliver_for=None):
+    def add_many(self, items, deliver_for=None, *, reinstall=False):
         """Persist a bulk enqueue once, rather than fsync the whole queue per mod."""
         with self._lock:
             self._batch_depth += 1
@@ -214,6 +221,7 @@ class DownloadManager:
                         deliver_to=(
                             deliver_for(item.appid) if deliver_for is not None else None
                         ),
+                        reinstall=reinstall,
                     )
                     for item in items
                 ]

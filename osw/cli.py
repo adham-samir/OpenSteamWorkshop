@@ -11,6 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .bulk import resolve_downloads
+from .installed import InstalledIndex
 from .models import WorkshopItem
 from .net import NetError
 from .queue import DownloadManager, JobState
@@ -146,9 +147,34 @@ def _console_auth(job, kind, prompt, cancel):
         print(file=sys.stderr, flush=True)
 
 
+def _filter_installed(args, items):
+    """Drop items already installed under the effective root unless --reinstall."""
+    if not items or getattr(args, "reinstall", False):
+        return items
+    root = args.out or get("content_root")
+    index = InstalledIndex(content_root=Path(root))
+    if not index.scan():
+        return items
+    keep = []
+    for item in items:
+        hit = index.lookup(item.appid, item.publishedfileid)
+        if hit is None:
+            keep.append(item)
+            continue
+        print(
+            f"[{item.publishedfileid}] already installed at {hit.path} — "
+            "use --reinstall to download again"
+        )
+    return keep
+
+
 def _download_items(args, items, had_issues=False):
     if not items:
         return EXIT_ERR
+    items = _filter_installed(args, items)
+    if not items:
+        print("Nothing to download — every requested item is already installed.")
+        return EXIT_ERR if had_issues else EXIT_OK
     manager = _build_manager(args)
     try:
         jobs = manager.add_many(items)
@@ -264,6 +290,9 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("appid")
     d.add_argument("fileid", nargs="+", type=int)
     d.add_argument("--out", default=None, help="content root dir (default from settings)")
+    d.add_argument(
+        "--reinstall", action="store_true", help="download again even if already installed"
+    )
     d.add_argument("--username", default=None, help="steam username (anonymous if omitted)")
     d.add_argument("--anonymous", action="store_true", help="force anonymous login")
     d.set_defaults(func=cmd_download)
@@ -276,6 +305,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--with-dependencies", action="store_true", help="resolve required items recursively"
     )
     batch.add_argument("--out", help="content root directory")
+    batch.add_argument(
+        "--reinstall", action="store_true", help="download again even if already installed"
+    )
     batch.add_argument("--username", help="optional Steam account; default is anonymous")
     batch.add_argument("--anonymous", action="store_true", help="force anonymous login")
     batch.set_defaults(func=cmd_batch)
