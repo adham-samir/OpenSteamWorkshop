@@ -122,37 +122,110 @@ def test_corrupt_queue_is_preserved(tmp_path):
     assert json.loads(path.read_text())["version"] == 99
 
 
-def test_worker_is_serial_and_survives_idle(tmp_path, monkeypatch):
-    mgr = DownloadManager(tmp_path, parallel=4)
-    running = threading.Event()
+def test_parallel_clamping_and_workspace_dirs(tmp_path):
+    assert DownloadManager(tmp_path, parallel=0).parallel == 1
+    assert DownloadManager(tmp_path, parallel=9).parallel == 3
+    assert DownloadManager(tmp_path, parallel="junk").parallel == 1
+
+    base = tmp_path / "steamcmd"
+    mgr = DownloadManager(tmp_path, parallel=3, steamcmd_dir=base)
+    assert mgr.workspace_dir(0) == base.resolve()
+    assert mgr.workspace_dir(1) == (tmp_path / "steamcmd-w1").resolve()
+    assert mgr.workspace_dir(2) == (tmp_path / "steamcmd-w2").resolve()
+
+
+def test_different_appids_download_concurrently(tmp_path, monkeypatch):
+    mgr = DownloadManager(tmp_path, parallel=2)
+    started: dict[int, float] = {}
+    started_lock = threading.Lock()
+    two_started = threading.Event()
     release = threading.Event()
-    seen = []
 
     class Client:
         def download_item(self, appid, fileid, dest, **kwargs):
-            seen.append(fileid)
-            running.set()
-            release.wait(2)
+            with started_lock:
+                started[fileid] = time.monotonic()
+                if len(started) >= 2:
+                    two_started.set()
+            release.wait(5)
             return tmp_path / str(fileid)
 
     monkeypatch.setattr(mgr, "steamcmd", lambda *args: Client())
     try:
         a = mgr.add_direct(10, 20)
-        assert running.wait(1)
-        b = mgr.add_direct(10, 21)
-        assert seen == [20]
+        b = mgr.add_direct(11, 21)
+        assert two_started.wait(3), f"only started {started}"
         release.set()
-        deadline = time.monotonic() + 2
-        while b.state is not JobState.DONE and time.monotonic() < deadline:
+        deadline = time.monotonic() + 3
+        while (
+            a.state is not JobState.DONE or b.state is not JobState.DONE
+        ) and time.monotonic() < deadline:
             time.sleep(0.01)
         assert a.state is b.state is JobState.DONE
+    finally:
+        release.set()
+        mgr.shutdown()
+
+
+def test_same_appid_serializes_even_with_spare_workers(tmp_path, monkeypatch):
+    mgr = DownloadManager(tmp_path, parallel=2)
+    first_started = threading.Event()
+    release = threading.Event()
+    started: list[int] = []
+    started_lock = threading.Lock()
+
+    class Client:
+        def download_item(self, appid, fileid, dest, **kwargs):
+            with started_lock:
+                started.append(fileid)
+            first_started.set()
+            release.wait(3)
+            return tmp_path / str(fileid)
+
+    monkeypatch.setattr(mgr, "steamcmd", lambda *args: Client())
+    try:
+        a = mgr.add_direct(10, 20)
+        assert first_started.wait(2)
+        b = mgr.add_direct(10, 21)
+        time.sleep(0.25)
+        assert started == [20], "the same app's manifest must not be written twice at once"
+        release.set()
+        deadline = time.monotonic() + 3
+        while (
+            a.state is not JobState.DONE or b.state is not JobState.DONE
+        ) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert started == [20, 21]
+        assert a.state is b.state is JobState.DONE
+    finally:
+        release.set()
+        mgr.shutdown()
+
+
+def test_worker_survives_idle_and_restarts_after_parallel_change(tmp_path, monkeypatch):
+    mgr = DownloadManager(tmp_path, parallel=2)
+
+    class Client:
+        def download_item(self, appid, fileid, dest, **kwargs):
+            return tmp_path / str(fileid)
+
+    monkeypatch.setattr(mgr, "steamcmd", lambda *args: Client())
+    try:
+        a = mgr.add_direct(10, 20)
+        deadline = time.monotonic() + 2
+        while a.state is not JobState.DONE and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert a.state is JobState.DONE
+
         time.sleep(0.15)
-        c = mgr.add_direct(10, 22)
+        mgr.parallel = 1
+        mgr.ensure_workers()
+        c = mgr.add_direct(12, 22)
+        deadline = time.monotonic() + 2
         while c.state is not JobState.DONE and time.monotonic() < deadline:
             time.sleep(0.01)
         assert c.state is JobState.DONE
     finally:
-        release.set()
         mgr.shutdown()
 
 

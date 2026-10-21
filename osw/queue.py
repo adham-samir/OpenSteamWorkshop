@@ -1,4 +1,9 @@
-"""Serial, restart-safe download queue shared by the Qt GUI and CLI."""
+"""Restart-safe download queue shared by the Qt GUI and CLI.
+
+SteamCMD still runs one process per workspace, but up to three worker slots can
+run at the same time. Workers use separate managed SteamCMD installs and a
+per-app lock, so two items from the same game never update one ``.acf`` at once.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +19,7 @@ from pathlib import Path
 from .delivery import deliver_item
 from .installed import read_acf_updates
 from .models import WorkshopItem
-from .steamcmd import DownloadCancelled, SteamCMD
+from .steamcmd import DEFAULT_DATA_DIR, DownloadCancelled, SteamCMD
 from .storage import atomic_json
 
 
@@ -29,6 +34,14 @@ class JobState(Enum):
 
 
 ACTIVE = (JobState.QUEUED, JobState.RUNNING, JobState.WAITING_FOR_AUTH)
+
+
+def _clamp_parallel(value) -> int:
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(3, value))
 
 
 @dataclass(frozen=True)
@@ -115,7 +128,7 @@ class DownloadManager:
     steamcmd_dir: Path | str | None = None
     username: str = ""
     password: str = ""
-    parallel: int = 1  # accepted for old clients; one process per workspace
+    parallel: int = 1  # 1-3 simultaneous SteamCMD workspaces
     queue_path: Path | None = None
     on_job_update: object = None
     on_log: object = None
@@ -124,13 +137,14 @@ class DownloadManager:
     _queue: queue.Queue = field(default_factory=queue.Queue, init=False)
     _lock: object = field(default_factory=threading.RLock, init=False)
     _stop: threading.Event = field(default_factory=threading.Event, init=False)
-    _thread: threading.Thread | None = field(default=None, init=False)
+    _threads: dict[int, threading.Thread] = field(default_factory=dict, init=False)
+    _app_locks: dict[int, threading.Lock] = field(default_factory=dict, init=False)
     _clients: dict = field(default_factory=dict, init=False)
     _batch_depth: int = field(default=0, init=False)
 
     def __post_init__(self):
         self.content_root = Path(self.content_root).expanduser().resolve()
-        self.parallel = 1
+        self.parallel = _clamp_parallel(self.parallel)
         if self.queue_path:
             self.queue_path = Path(self.queue_path)
             self.restore()
@@ -160,11 +174,29 @@ class DownloadManager:
             except Exception:
                 pass  # a closed frontend must not kill the worker
 
+    def workspace_dir(self, slot: int, base=None) -> Path | None:
+        """SteamCMD install directory for one worker slot.
+
+        Slot 0 uses the configured (or default) directory so a serial queue
+        keeps the existing install. Extra slots get a sibling workspace, which
+        keeps SteamCMD's ``steamapps`` state and locks independent.
+        """
+        raw = base or self.steamcmd_dir
+        if not raw:
+            root = DEFAULT_DATA_DIR / "steamcmd"
+        else:
+            root = Path(raw).expanduser()
+        root = root.resolve()
+        if slot <= 0:
+            return root
+        return root.with_name(f"{root.name}-w{int(slot)}")
+
     def steamcmd(self, install_dir=None, cancel=None):
         key = str(install_dir or self.steamcmd_dir or "")
-        # Only the serial worker calls this, except the synchronous CLI preflight.
         with self._lock:
-            client = self._clients.setdefault(key, SteamCMD(key or None))
+            client = self._clients.get(key)
+            if client is None:
+                client = self._clients[key] = SteamCMD(key or None)
         client.ensure_installed(log=self.log, cancel=cancel)
         return client
 
@@ -271,14 +303,27 @@ class DownloadManager:
         with self._lock:
             if self._batch_depth:
                 return
-            if self._thread is None or not self._thread.is_alive():
-                self._thread = threading.Thread(
-                    target=self._worker, daemon=True, name="osw-download"
-                )
-                self._thread.start()
+            self.parallel = _clamp_parallel(self.parallel)
+            for slot in range(self.parallel):
+                thread = self._threads.get(slot)
+                if thread is None or not thread.is_alive():
+                    thread = threading.Thread(
+                        target=self._worker,
+                        args=(slot,),
+                        daemon=True,
+                        name=f"osw-download-{slot}",
+                    )
+                    self._threads[slot] = thread
+                    thread.start()
 
-    def _worker(self):
+    def _app_lock(self, appid: int) -> threading.Lock:
+        with self._lock:
+            return self._app_locks.setdefault(int(appid), threading.Lock())
+
+    def _worker(self, slot: int = 0):
         while not self._stop.is_set():
+            if slot >= self.parallel:
+                return
             try:
                 job_id, generation = self._queue.get(timeout=0.1)
             except queue.Empty:
@@ -287,12 +332,25 @@ class DownloadManager:
                 with self._lock:
                     job = self.get_job(job_id)
                     valid = job and generation == job._generation and job.state is JobState.QUEUED
-                if valid:
-                    self._run_job(job)
+                if not valid:
+                    continue
+                lock = self._app_lock(job.appid)
+                if not lock.acquire(blocking=False):
+                    # Another slot owns this game's SteamCMD manifest. Put the
+                    # job back so this worker can help with a different game,
+                    # instead of blocking capacity behind a lock.
+                    self._queue.put((job.id, generation))
+                    if self._stop.wait(0.05):
+                        return
+                    continue
+                try:
+                    self._run_job(job, slot)
+                finally:
+                    lock.release()
             finally:
                 self._queue.task_done()
 
-    def _run_job(self, job):
+    def _run_job(self, job, slot: int = 0):
         with self._lock:
             if job.state is not JobState.QUEUED:
                 return
@@ -335,7 +393,10 @@ class DownloadManager:
                 update(state=JobState.RUNNING, message="Authenticating")
 
         try:
-            client = self.steamcmd(job.steamcmd_dir, job.cancel_event)
+            client = self.steamcmd(
+                self.workspace_dir(slot, job.steamcmd_dir or self.steamcmd_dir),
+                job.cancel_event,
+            )
             path = client.download_item(
                 job.appid,
                 job.fileid,
@@ -452,5 +513,9 @@ class DownloadManager:
                         "Interrupted — choose Resume unfinished",
                     )
                     self.emit(job)
-        if self._thread is not None and self._thread is not threading.current_thread():
-            self._thread.join(timeout)
+        threads = list(self._threads.values())
+        deadline = time.monotonic() + max(0.1, timeout)
+        for thread in threads:
+            if thread is threading.current_thread():
+                continue
+            thread.join(max(0.0, deadline - time.monotonic()))

@@ -88,7 +88,7 @@ def test_settings_migrate_passwords_and_validate_types(tmp_path):
     )
     loaded = settings.load()
     assert "password" not in loaded and "remember_password" not in loaded
-    assert loaded["parallel_downloads"] == 1
+    assert loaded["parallel_downloads"] == 3  # clamped to the supported range
     assert isinstance(loaded["content_root"], str)
     settings.save({"content_root": str(tmp_path / "mods"), "password": "new-secret"})
     data = json.loads(settings.CONFIG_FILE.read_text())
@@ -115,6 +115,19 @@ def test_cli_anonymous_precedence_and_default(monkeypatch):
         manager = cli._build_manager(args)
         assert manager.username == expected
         assert manager.password == ("secret" if expected else "")
+
+
+def test_cli_parallel_flag_and_settings(monkeypatch):
+    args = cli.build_parser().parse_args(["download", "10", "20", "--parallel", "2"])
+    assert cli._build_manager(args).parallel == 2
+
+    assert cli.main(["settings", "--parallel", "2"]) == 0
+    assert settings.get("parallel_downloads") == 2
+    default_args = cli.build_parser().parse_args(["download", "10", "20"])
+    assert cli._build_manager(default_args).parallel == 2
+
+    assert cli.main(["settings", "--parallel", "9"]) == 0
+    assert settings.get("parallel_downloads") == 3
 
 
 def test_cli_duplicate_downloads_finish(tmp_path, monkeypatch, capsys):

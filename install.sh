@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/adham-samir/OpenSteamWorkshop/main/install.sh | bash
 #
-# Override the version with OSW_VERSION=0.5.0 ./install.sh
+# Override the version with OSW_VERSION=0.6.0 ./install.sh
 set -euo pipefail
 
 REPO="adham-samir/OpenSteamWorkshop"

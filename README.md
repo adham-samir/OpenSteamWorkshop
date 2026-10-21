@@ -45,7 +45,7 @@ After it finishes:
 #### 2. pipx
 
 ```bash
-pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.5.0/opensteamworkshop-0.5.0-py3-none-any.whl
+pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.6.0/opensteamworkshop-0.6.0-py3-none-any.whl
 osw-gui
 osw desktop-install   # optional: add the app-menu entry
 ```
@@ -88,7 +88,7 @@ py --version
 3. Install it (replace the path with your download folder):
 
 ```powershell
-py -m pip install "$HOME\Downloads\opensteamworkshop-0.5.0-py3-none-any.whl"
+py -m pip install "$HOME\Downloads\opensteamworkshop-0.6.0-py3-none-any.whl"
 ```
 
 `pip` installs PySide6 and the other dependencies automatically.
@@ -138,7 +138,7 @@ folder (see **How it works**).
 2. Search for a game, open it, and browse its Workshop items.
 3. Pick a mod and click **Download**; progress appears in **Downloads**.
 4. Open **Library** to see installed mods; click **Check for updates** to find
-   newer versions.
+   newer versions, or **Cleanup** if duplicates are found.
 
 The app has five workspaces: **Browse**, **Imports**, **Library**, **Downloads**
 and **Settings**, plus a status strip that follows active downloads.
@@ -149,11 +149,15 @@ and **Settings**, plus a status strip that follows active downloads.
   dependencies, sizes and subscriber counts.
 - **Download through SteamCMD** into `~/SteamMods` by default, with a visible,
   restart-safe queue.
+- **Parallel downloads**: run up to three SteamCMD workers at once, each with
+  its own workspace; items from the same game still download one at a time.
 - **Per-game mod folders**: deliver finished mods straight into a game's
   `Mods`/`addons` folder with a title-named folder.
 - **Bulk imports**: paste item or collection URLs, resolve dependencies, review
   the list and queue the mods you want.
 - **Installed library**: inspect, open, re-download or delete installed items.
+- **Duplicate cleanup**: review installed items that exist in both the default
+  mods root and a per-game folder, and delete the redundant copies.
 - **Mod updates**: check manually or once a day; update single mods or review a
   batch with **Update all**.
 - **Already-installed protection**: the app asks before re-downloading a mod;
@@ -178,9 +182,17 @@ osw download 108600 3820938264 --out ~/SteamMods
 osw batch "https://steamcommunity.com/sharedfiles/filedetails/?id=..."
 osw batch --input workshop-links.txt --with-dependencies
 
+# Run two or three downloads at once (same-game items stay serialized)
+osw batch --input workshop-links.txt --with-dependencies --parallel 2
+osw settings --parallel 3   # default for future commands
+
 # Check for newer Workshop revisions, or fetch them all
 osw updates 108600
 osw updates 108600 --apply
+
+# Report duplicate copies; --prune removes only the safe default copies
+osw cleanup
+osw cleanup --prune
 
 # Installed items are skipped; --reinstall downloads them again
 osw download 108600 3820938264 --reinstall
@@ -208,6 +220,20 @@ a restart; choose **Resume unfinished** to continue. Pinned games and per-game
 folders live in `state.json` next to it. The same `.config/OpenSteamWorkshop`
 folder is used on Windows (`C:\Users\<you>\.config\OpenSteamWorkshop`).
 Changing Settings affects new jobs only; queued jobs keep their destination.
+
+**Parallel downloads.** **Settings → Parallel downloads** (or `--parallel N`)
+runs two or three jobs at a time. Extra workers use sibling workspaces such as
+`steamcmd-w1`/`steamcmd-w2`, created automatically. Different games can run
+together; two items from the same game still take turns so SteamCMD's
+`appworkshop_<appid>.acf` is never written concurrently. The default is one
+worker.
+
+**Duplicates.** If an item exists both in the default tree and in a per-game
+folder, the delivered copy is the live one and the default copy is leftover.
+**Library → Cleanup (N)** lists these and pre-ticks the safe default copies;
+you can untick anything or choose between two delivered copies. The CLI's
+`osw cleanup` reports the same groups, and `--prune` deletes only the safe
+recommendation, never an ambiguous one.
 
 **Updates.** The Library compares each installed item with Steam's latest public
 revision. Default-folder items use SteamCMD's `appworkshop_<appid>.acf`;

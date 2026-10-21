@@ -2,7 +2,12 @@
 
 import json
 
-from osw.installed import InstalledIndex, content_dir, scan_installed
+from osw.installed import (
+    InstalledIndex,
+    content_dir,
+    scan_installed,
+    scan_installed_all,
+)
 
 
 def _staged(root, appid, fileid, payload=b"abc"):
@@ -51,6 +56,72 @@ def test_index_includes_delivered_override_markers(tmp_path):
     assert hit.delivered is True
     assert hit.path == delivered
     assert hit.location_label.startswith("Delivered")
+
+
+def test_scan_all_finds_redundant_default_copy(tmp_path):
+    root = tmp_path / "mods"
+    staged = _staged(root, 4000, 100)
+    game_mods = tmp_path / "RimWorld" / "Mods"
+    delivered = game_mods / "Wiremod"
+    delivered.mkdir(parents=True)
+    (delivered / "About.xml").write_text("<Mod/>")
+    (delivered / ".opensteamworkshop.json").write_text(
+        json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+    )
+
+    items, groups = scan_installed_all(root, game_paths={4000: game_mods})
+
+    assert [(item.appid, item.fileid) for item in items] == [(4000, 100)]
+    assert items[0].path == delivered  # delivered wins, as before
+    assert len(groups) == 1
+    group = groups[0]
+    assert group.label == "Wiremod"
+    assert [(copy.path, copy.delivered) for copy in group.copies] == [
+        (staged, False),
+        (delivered, True),
+    ]
+    assert group.redundant.path == staged
+    assert group.requires_choice is False
+
+
+def test_scan_all_requires_choice_between_two_delivered_copies(tmp_path):
+    root = tmp_path / "mods"
+    first = tmp_path / "GameA" / "Mods" / "Wiremod"
+    second = tmp_path / "GameB" / "Mods" / "Wiremod copy"
+    for folder in (first, second):
+        folder.mkdir(parents=True)
+        (folder / ".opensteamworkshop.json").write_text(
+            json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+        )
+
+    items, groups = scan_installed_all(
+        root, game_paths={4000: first.parent, 4001: second.parent}
+    )
+
+    assert len(items) == 1
+    assert len(groups) == 1
+    assert {copy.path for copy in groups[0].copies} == {first, second}
+    assert groups[0].redundant is None
+    assert groups[0].requires_choice is True
+
+
+def test_index_exposes_duplicate_groups_and_clears_them(tmp_path):
+    root = tmp_path / "mods"
+    staged = _staged(root, 4000, 100)
+    game_mods = tmp_path / "Mods"
+    delivered = game_mods / "Wiremod"
+    delivered.mkdir(parents=True)
+    (delivered / ".opensteamworkshop.json").write_text(
+        json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+    )
+
+    index = InstalledIndex()
+    assert index.scan(root, {4000: game_mods})
+    assert index.duplicate_count() == 1
+    assert index.duplicates()[0].redundant.path == staged
+
+    index.remove(4000, 100)
+    assert index.duplicate_count() == 0
 
 
 def test_cancelled_scan_leaves_index_untouched(tmp_path):

@@ -30,6 +30,7 @@ class LibraryPage(QWidget):
     refresh_requested = Signal()
     check_updates_requested = Signal()
     update_all_requested = Signal()
+    cleanup_requested = Signal()
     open_root_requested = Signal()
     action_requested = Signal(object, str)  # InstalledItem, action label
 
@@ -65,6 +66,12 @@ class LibraryPage(QWidget):
         self.update_all_btn.setEnabled(False)
         self.update_all_btn.clicked.connect(self.update_all_requested.emit)
         head.addWidget(self.update_all_btn)
+
+        self.cleanup_btn = QPushButton("Cleanup")
+        self.cleanup_btn.setAccessibleName("Review and remove duplicate installed copies")
+        self.cleanup_btn.setEnabled(False)
+        self.cleanup_btn.clicked.connect(self.cleanup_requested.emit)
+        head.addWidget(self.cleanup_btn)
 
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setAccessibleName("Rescan installed Workshop content")
@@ -148,8 +155,17 @@ class LibraryPage(QWidget):
         self.path_label.setText(text)
         self.path_label.setToolTip(text)
 
+    def set_duplicates(self, count: int) -> None:
+        count = max(0, int(count))
+        self.cleanup_btn.setText(f"Cleanup ({count})" if count else "Cleanup")
+        self.cleanup_btn.setEnabled(bool(count))
+        self.cleanup_btn.setToolTip(
+            f"{count} installed items have duplicate copies" if count else ""
+        )
+
     def show_loading(self, path) -> None:
         self.model.set_items([])
+        self.set_duplicates(0)
         self._content_dir = Path(path) if path else None
         text = str(self._content_dir) if self._content_dir is not None else "your mods root"
         self.path_label.setText(f"Scanning: {text}")
@@ -166,11 +182,12 @@ class LibraryPage(QWidget):
         self.action_bar.setVisible(False)
         self.update_actions()
 
-    def show_items(self, items, path=None) -> None:
+    def show_items(self, items, path=None, duplicates: int = 0) -> None:
         if path is not None:
             self._set_path(path)
         items = list(items or [])
         self.model.set_items(items)
+        self.set_duplicates(duplicates)
         self.table.setEnabled(True)
         if not items:
             self.show_empty(self._content_dir)
@@ -184,6 +201,7 @@ class LibraryPage(QWidget):
         if path is not None or self._content_dir is None:
             self._set_path(path)
         self.model.set_items([])
+        self.set_duplicates(0)
         self.table.setEnabled(True)
         text = str(self._content_dir) if self._content_dir is not None else "your mods root"
         self.summary.setText("")
@@ -208,6 +226,7 @@ class LibraryPage(QWidget):
         if path is not None:
             self._set_path(path)
         self.model.set_items([])
+        self.set_duplicates(0)
         self.table.setEnabled(True)
         self.summary.setText("")
         self._sync_update_all()

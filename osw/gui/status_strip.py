@@ -131,36 +131,58 @@ class StatusStrip(QFrame):
         lay.addStretch(1)
         lay.addWidget(self.hint)
 
-    def update_state(self, current: str, message: str, running: bool, progress: float, queued: int, failed: int) -> None:
+    def update_state(
+        self,
+        current: str,
+        message: str,
+        running: bool,
+        progress: float,
+        queued: int,
+        failed: int,
+        active: int | None = None,
+    ) -> None:
         """Called by the controller after every JobSnapshot update."""
+        active_count = (
+            int(active) if active is not None else (1 if running else 0)
+        )
         self.queued_count = queued
         self.failure_count = failed
         self.running_title = current
         self.progress_value = int(progress)
         self.spinner.set_running(running)
-        self.title.setText(current)
-        self.message.setText(message)
+        if active_count > 1:
+            self.title.setText(f"{active_count} downloads active")
+            self.message.setText(f"{current} · {message}" if current else message)
+        else:
+            self.title.setText(current)
+            self.message.setText(message)
         self.progress.setRange(0, 0 if running and progress <= 0 else 100)
         self.progress.setValue(int(progress))
         self.queued_chip.set_count(queued, "queued")
         self.failed_chip.set_count(failed, "failed")
         state = "downloading" if running else "idle"
+        active_text = f" {active_count} active." if active_count > 1 else ""
         self.setAccessibleName(
-            f"Download status: {state}. {queued} queued, {failed} failed."
+            f"Download status: {state}.{active_text} {queued} queued, {failed} failed."
         )
 
     def update_from_jobs(self, jobs) -> None:
         """Compatibility feed used by automation and restored-state checks."""
+        live = [
+            j for j in jobs if j.state in (JobState.RUNNING, JobState.WAITING_FOR_AUTH)
+        ]
         running = next(
-            (j for j in jobs if j.state in (JobState.RUNNING, JobState.WAITING_FOR_AUTH)),
-            None,
+            (j for j in live if j.state is JobState.RUNNING),
+            live[0] if live else None,
         )
         queued = sum(1 for j in jobs if j.state is JobState.QUEUED)
         failed = sum(1 for j in jobs if j.state is JobState.FAILED)
         if running is not None:
             progress = float(running.progress or 0)
             message = f"{running.state.value} · {progress:.0f}%"
-            self.update_state(running.title, message, True, progress, queued, failed)
+            self.update_state(
+                running.title, message, True, progress, queued, failed, len(live)
+            )
         else:
             self.update_state("", "No active downloads.", False, 0.0, queued, failed)
 

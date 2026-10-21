@@ -67,6 +67,7 @@ from ..steam_api import (
 )
 from . import theme
 from .browse_page import MODE_GRID, MODE_HERO, MODE_RESULTS, BrowsePage
+from .cleanup_dialog import CleanupDialog
 from .downloads_page import DownloadsPage
 from .imports_page import ImportPage
 from .library import (
@@ -77,6 +78,7 @@ from .library import (
     delete_installed_item,
     fetch_installed_metadata,
     scan_installed,
+    scan_installed_all,
 )
 from .library_page import LibraryPage
 from .nav_rail import NavRail
@@ -299,6 +301,7 @@ class MainWindow(QMainWindow):
         self._game_term = ""
         self._requests: dict = {}
         self._closing = False
+        self._auth_lock = threading.Lock()
         self._selection: list[WorkshopItem] = []
         self._queue_path = Path(queue_path) if queue_path else CONFIG_DIR / "queue.json"
         self._job_snapshots: dict[str, JobSnapshot] = {}
@@ -307,6 +310,7 @@ class MainWindow(QMainWindow):
         self.installed = InstalledIndex()
         self._installed_ready = False
         self._installed_generation = 0
+        self._duplicate_groups: list = []
         self._update_status: dict[int, UpdateInfo] = {}
         self._update_check_cancel = threading.Event()
         self._update_check_generation = 0
@@ -390,7 +394,7 @@ class MainWindow(QMainWindow):
             content_root=Path(get("content_root")),
             steamcmd_dir=(Path(get("steamcmd_dir")) if get("steamcmd_dir") else None),
             queue_path=self._queue_path,
-            parallel=1,
+            parallel=get("parallel_downloads"),
         )
 
     def _request(self, key, fn, on_ok, on_done=None):
@@ -487,6 +491,7 @@ class MainWindow(QMainWindow):
         self.library.refresh_requested.connect(self._scan_library)
         self.library.check_updates_requested.connect(self._check_updates)
         self.library.update_all_requested.connect(self._update_all)
+        self.library.cleanup_requested.connect(self._review_duplicates)
         self.library.open_root_requested.connect(self._open_library_root)
         self.library.action_requested.connect(self._on_library_action)
 
@@ -1179,8 +1184,13 @@ class MainWindow(QMainWindow):
         queued = sum(1 for s in snapshots if s.state is JobState.QUEUED)
         failed = sum(1 for s in snapshots if s.state is JobState.FAILED)
         active = [s for s in snapshots if s.state in ACTIVE]
-        running = [s for s in active if s.state is JobState.RUNNING]
-        current = running[0] if running else (active[0] if active else None)
+        live = [
+            s
+            for s in active
+            if s.state in (JobState.RUNNING, JobState.WAITING_FOR_AUTH)
+        ]
+        running = [s for s in live if s.state is JobState.RUNNING]
+        current = running[0] if running else (live[0] if live else (active[0] if active else None))
         if current is None:
             self.strip.update_state("", "No active downloads.", False, 0.0, queued, failed)
         else:
@@ -1192,6 +1202,7 @@ class MainWindow(QMainWindow):
                 current.progress,
                 queued,
                 failed,
+                len(live),
             )
         self.nav.set_counts(queued, failed)
         self.downloads.update_counts()
@@ -1265,18 +1276,21 @@ class MainWindow(QMainWindow):
             self.manager.retry(job_id, username=username.strip(), password="")
 
     def _request_auth(self, job, kind, prompt, cancel):
-        request = {
-            "job": job,
-            "kind": kind,
-            "cancel": cancel,
-            "ready": threading.Event(),
-            "value": None,
-        }
-        self.authEvent.emit(request)
-        while not request["ready"].wait(0.1):
-            if cancel.is_set() or self._closing:
-                return None
-        return request["value"]
+        # Workers may ask at the same time; show one modal prompt at a time so
+        # a Steam Guard code is never typed into the wrong job's dialog.
+        with self._auth_lock:
+            request = {
+                "job": job,
+                "kind": kind,
+                "cancel": cancel,
+                "ready": threading.Event(),
+                "value": None,
+            }
+            self.authEvent.emit(request)
+            while not request["ready"].wait(0.1):
+                if cancel.is_set() or self._closing:
+                    return None
+            return request["value"]
 
     @Slot(object)
     def _show_auth(self, request):
@@ -1323,18 +1337,21 @@ class MainWindow(QMainWindow):
         self.library.show_loading(path)
         game_paths = dict(self.state.game_paths)
         self.hub.call(
-            lambda: scan_installed(root, scan_cancel, game_paths),
-            lambda items: self._library_scanned(generation, path, items),
+            lambda: scan_installed_all(root, scan_cancel, game_paths),
+            lambda result: self._library_scanned(generation, path, result),
             on_error=lambda exc: self._library_scan_failed(generation, path, exc),
         )
 
-    def _library_scanned(self, generation: int, path: Path, items) -> None:
-        if self._closing or generation != self._library_scan_generation or items is None:
+    def _library_scanned(self, generation: int, path: Path, result) -> None:
+        if self._closing or generation != self._library_scan_generation or result is None:
             return
+        items, duplicates = result
         items = list(items)
-        self.installed.replace(items)
+        duplicates = list(duplicates)
+        self._duplicate_groups = duplicates
+        self.installed.replace(items, duplicates)
         self._installed_ready = True
-        self.library.show_items(items, path)
+        self.library.show_items(items, path, len(duplicates))
         self.nav.set_library_count(len(items))
         noun = "item" if len(items) == 1 else "items"
         self.statusBar().showMessage(
@@ -1365,6 +1382,7 @@ class MainWindow(QMainWindow):
     def _library_scan_failed(self, generation: int, path: Path, exc) -> None:
         if self._closing or generation != self._library_scan_generation:
             return
+        self._duplicate_groups = []
         self.nav.set_library_count(0)
         self.library.show_error(str(exc), path)
         self.statusBar().showMessage(f"Could not scan the Library: {exc}", 8000)
@@ -1425,6 +1443,42 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Folder not found: {target}", 6000)
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+
+    def _review_duplicates(self) -> None:
+        groups = list(self.installed.duplicates() or self._duplicate_groups)
+        if not groups:
+            self.statusBar().showMessage("No duplicate installs found", 4000)
+            return
+        dialog = CleanupDialog(groups, self)
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+            copies = dialog.selected_copies() if accepted else []
+        finally:
+            dialog.deleteLater()
+        if not copies:
+            return
+
+        root = get("content_root")
+        removed, failures = 0, []
+        for copy in copies:
+            try:
+                delete_installed_item(copy, root)
+            except (OSError, ValueError) as exc:
+                failures.append(f"{copy.label}: {exc}")
+            else:
+                removed += 1
+        if failures:
+            self.statusBar().showMessage(
+                f"Removed {removed} duplicate copies; {len(failures)} failed: "
+                + failures[0],
+                10000,
+            )
+        else:
+            noun = "copy" if removed == 1 else "copies"
+            self.statusBar().showMessage(
+                f"Removed {removed} duplicate {noun}", 6000
+            )
+        self._scan_library()
 
     def _on_library_action(self, item, action: str) -> None:
         if action == "Open folder":
@@ -1582,6 +1636,8 @@ class MainWindow(QMainWindow):
             return
         self.library.remove_item(item.fileid)
         self.installed.remove(item.appid, item.fileid)
+        self._duplicate_groups = self.installed.duplicates()
+        self.library.set_duplicates(len(self._duplicate_groups))
         self._update_status.pop(item.fileid, None)
         self.nav.set_library_count(self.library.model.rowCount())
         self.statusBar().showMessage(f"Deleted {item.label}", 5000)
@@ -1598,15 +1654,19 @@ class MainWindow(QMainWindow):
             use_account=bool(self.manager.username),
             password=self.manager.password,
             steamcmd_dir=str(get("steamcmd_dir")),
+            parallel=get("parallel_downloads"),
         )
 
-    def _save_settings(self, content_root, username, use_account, password, steamcmd_dir) -> None:
+    def _save_settings(
+        self, content_root, username, use_account, password, steamcmd_dir, parallel
+    ) -> None:
         try:
             save(
                 {
                     "content_root": content_root,
                     "username": username,
                     "steamcmd_dir": steamcmd_dir,
+                    "parallel_downloads": parallel,
                 }
             )
         except OSError as exc:
@@ -1616,6 +1676,8 @@ class MainWindow(QMainWindow):
         self.manager.steamcmd_dir = get("steamcmd_dir") or None
         self.manager.username = username if use_account else ""
         self.manager.password = password if self.manager.username else ""
+        self.manager.parallel = max(1, min(3, int(parallel or 1)))
+        self.manager.ensure_workers()
         self._refresh_mods_folder()
         self._refresh_installed_index()
         self.settings_page.confirm_saved()

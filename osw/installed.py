@@ -91,6 +91,42 @@ class InstalledItem:
         return f"{_short_path(self.path)} ({self.location_label})"
 
 
+@dataclass
+class DuplicateGroup:
+    """One Workshop item installed in more than one managed location."""
+
+    appid: int
+    fileid: int
+    copies: list[InstalledItem]
+    winner: InstalledItem
+
+    @property
+    def label(self) -> str:
+        return self.winner.label
+
+    @property
+    def game_label(self) -> str:
+        return self.winner.game_label
+
+    @property
+    def redundant(self) -> InstalledItem | None:
+        """The copy Cleanup recommends deleting without asking.
+
+        A delivered copy is the live one used by the game, so a leftover
+        staged copy in the default root is safe to remove. Two delivered
+        copies need an explicit choice, so no recommendation is made.
+        """
+        staged = [copy for copy in self.copies if not copy.delivered]
+        delivered = [copy for copy in self.copies if copy.delivered]
+        if delivered and staged:
+            return staged[0]
+        return None
+
+    @property
+    def requires_choice(self) -> bool:
+        return self.redundant is None
+
+
 @dataclass(frozen=True)
 class InstalledMetadata:
     title: str = ""
@@ -263,21 +299,14 @@ def _numeric_dirs(path: Path) -> list[Path]:
     return entries
 
 
-def scan_installed(
+def _scan_copies(
     mods_root: Path | str,
     cancel: threading.Event | None = None,
     game_paths: dict | None = None,
-) -> list[InstalledItem] | None:
-    """Scan installed app/item directories plus per-game override folders.
-
-    Default downloads live in the numeric SteamCMD tree; override deliveries
-    are title-named folders carrying a ``.opensteamworkshop.json`` marker.
-    Delivered rows win over leftover staged copies of the same item.
-
-    Returns ``None`` if cancelled so the caller can ignore a stale worker.
-    """
+) -> dict[tuple[int, int], list[InstalledItem]] | None:
+    """Collect every managed copy, including duplicates of the same item."""
     content = content_dir(mods_root)
-    found: dict[tuple[int, int], InstalledItem] = {}
+    found: dict[tuple[int, int], list[InstalledItem]] = {}
     for app_path in _numeric_dirs(content):
         if _cancelled(cancel):
             return None
@@ -291,14 +320,16 @@ def scan_installed(
                 return None
             size, modified = stats
             fileid = int(item_path.name)
-            found[(appid, fileid)] = InstalledItem(
-                appid=appid,
-                fileid=fileid,
-                path=item_path,
-                size=size,
-                modified=modified,
-                origin=content,
-                updated=revisions.get(fileid, 0),
+            found.setdefault((appid, fileid), []).append(
+                InstalledItem(
+                    appid=appid,
+                    fileid=fileid,
+                    path=item_path,
+                    size=size,
+                    modified=modified,
+                    origin=content,
+                    updated=revisions.get(fileid, 0),
+                )
             )
 
     for _appid, folder in sorted((game_paths or {}).items()):
@@ -308,10 +339,62 @@ def scan_installed(
         if delivered is None:
             return None
         for item in delivered:
-            found[(item.appid, item.fileid)] = item
-    items = list(found.values())
+            found.setdefault((item.appid, item.fileid), []).append(item)
+    return found
+
+
+def _winner(copies: list[InstalledItem]) -> InstalledItem:
+    """Delivered rows win over leftover staged copies of the same item."""
+    delivered = [copy for copy in copies if copy.delivered]
+    return delivered[-1] if delivered else copies[0]
+
+
+def scan_installed(
+    mods_root: Path | str,
+    cancel: threading.Event | None = None,
+    game_paths: dict | None = None,
+) -> list[InstalledItem] | None:
+    """Scan installed app/item directories plus per-game override folders.
+
+    Default downloads live in the numeric SteamCMD tree; override deliveries
+    are title-named folders carrying a ``.opensteamworkshop.json`` marker.
+    Delivered rows win over leftover staged copies of the same item.
+
+    Returns ``None`` if cancelled so the caller can ignore a stale worker.
+    """
+    found = _scan_copies(mods_root, cancel, game_paths)
+    if found is None:
+        return None
+    items = [_winner(copies) for copies in found.values()]
     items.sort(key=lambda item: (item.appid, item.fileid))
     return items
+
+
+def scan_installed_all(
+    mods_root: Path | str,
+    cancel: threading.Event | None = None,
+    game_paths: dict | None = None,
+) -> tuple[list[InstalledItem], list[DuplicateGroup]] | None:
+    """Scan once and return both the Library rows and duplicate groups.
+
+    The Library rows match :func:`scan_installed` exactly (one winner per
+    item); duplicate groups retain every copy so Cleanup can show and remove
+    the redundant ones.
+    """
+    found = _scan_copies(mods_root, cancel, game_paths)
+    if found is None:
+        return None
+    items: list[InstalledItem] = []
+    groups: list[DuplicateGroup] = []
+    for (appid, fileid), copies in found.items():
+        winner = _winner(copies)
+        items.append(winner)
+        if len(copies) > 1:
+            ordered = sorted(copies, key=lambda copy: (copy.delivered, str(copy.path)))
+            groups.append(DuplicateGroup(appid, fileid, ordered, winner))
+    items.sort(key=lambda item: (item.appid, item.fileid))
+    groups.sort(key=lambda group: (group.appid, group.fileid))
+    return items, groups
 
 
 def scan_delivered_folder(
@@ -546,10 +629,12 @@ class InstalledIndex:
     game_paths: dict = field(default_factory=dict)
     _by_key: dict[tuple[int, int], InstalledItem] = field(default_factory=dict, init=False)
     _by_fileid: dict[int, InstalledItem] = field(default_factory=dict, init=False)
+    _duplicate_groups: list[DuplicateGroup] = field(default_factory=list, init=False)
 
-    def replace(self, items) -> None:
+    def replace(self, items, duplicates=None) -> None:
         self._by_key = {}
         self._by_fileid = {}
+        self._duplicate_groups = list(duplicates or [])
         for item in items:
             self.put(item)
 
@@ -570,10 +655,11 @@ class InstalledIndex:
             self.game_paths = dict(game_paths)
         if self.content_root is None:
             return True
-        items = scan_installed(self.content_root, cancel, self.game_paths)
-        if items is None:
+        scanned = scan_installed_all(self.content_root, cancel, self.game_paths)
+        if scanned is None:
             return False
-        self.replace(items)
+        items, duplicates = scanned
+        self.replace(items, duplicates)
         return True
 
     def lookup(self, appid: int, fileid: int) -> InstalledItem | None:
@@ -613,6 +699,17 @@ class InstalledIndex:
     def remove(self, appid: int, fileid: int) -> None:
         self._by_key.pop((int(appid or 0), int(fileid)), None)
         self._by_fileid.pop(int(fileid), None)
+        self._duplicate_groups = [
+            group
+            for group in self._duplicate_groups
+            if (group.appid, group.fileid) != (int(appid or 0), int(fileid))
+        ]
+
+    def duplicates(self) -> list[DuplicateGroup]:
+        return list(self._duplicate_groups)
+
+    def duplicate_count(self) -> int:
+        return len(self._duplicate_groups)
 
     def _is_delivered(self, path: Path) -> bool:
         if self.content_root is None:

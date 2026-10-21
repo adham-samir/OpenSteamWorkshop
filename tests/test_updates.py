@@ -184,6 +184,62 @@ def test_state_persists_update_check_time(tmp_path):
     assert reloaded.updates_check_due() is False
 
 
+def test_cli_cleanup_reports_and_prunes_only_default_copies(
+    tmp_path, monkeypatch, capsys
+):
+    import osw.cli as cli
+
+    root = tmp_path / "mods"
+    staged = _staged(root, 4000, 100)
+    game_mods = tmp_path / "RimWorld" / "Mods"
+    delivered = game_mods / "Wiremod"
+    delivered.mkdir(parents=True)
+    (delivered / ".opensteamworkshop.json").write_text(
+        json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+    )
+    AppState().set_game_path(4000, game_mods)
+    monkeypatch.setattr(
+        cli,
+        "_build_manager",
+        Mock(side_effect=AssertionError("cleanup must not start SteamCMD")),
+    )
+
+    assert cli.main(["cleanup", "--out", str(root)]) == 0
+    report = capsys.readouterr().out
+    assert "Wiremod" in report
+    assert "recommended to delete" in report
+    assert "1 safe deletion" in report
+    assert staged.is_dir() and delivered.is_dir()
+
+    assert cli.main(["cleanup", "--out", str(root), "--prune"]) == 0
+    pruned = capsys.readouterr().out
+    assert "Deleted default copy of Wiremod" in pruned
+    assert not staged.exists()
+    assert delivered.is_dir()
+
+
+def test_cli_cleanup_skips_ambiguous_delivered_copies(tmp_path, capsys):
+    import osw.cli as cli
+
+    root = tmp_path / "mods"
+    first = tmp_path / "GameA" / "Mods" / "Wiremod"
+    second = tmp_path / "GameB" / "Mods" / "Wiremod copy"
+    for folder in (first, second):
+        folder.mkdir(parents=True)
+        (folder / ".opensteamworkshop.json").write_text(
+            json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+        )
+    state = AppState()
+    state.set_game_path(4000, first.parent)
+    state.set_game_path(4001, second.parent)
+
+    assert cli.main(["cleanup", "--out", str(root), "--prune"]) == 0
+    output = capsys.readouterr().out
+    assert "need a choice" in output
+    assert "Skipped 1 items" in output
+    assert first.is_dir() and second.is_dir()
+
+
 def test_cli_updates_reports_and_applies(tmp_path, monkeypatch, capsys):
     import osw.cli as cli
     from osw.installed import UpdateInfo

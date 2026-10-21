@@ -9,6 +9,7 @@ from ..installed import (
     UNKNOWN,
     UP_TO_DATE,
     UPDATE_AVAILABLE,
+    DuplicateGroup,
     InstalledIndex,
     InstalledItem,
     InstalledMetadata,
@@ -20,6 +21,7 @@ from ..installed import (
     read_acf_updates,
     scan_delivered_folder,
     scan_installed,
+    scan_installed_all,
 )
 
 __all__ = [
@@ -27,6 +29,7 @@ __all__ = [
     "UNAVAILABLE",
     "UNKNOWN",
     "UPDATE_AVAILABLE",
+    "DuplicateGroup",
     "InstalledIndex",
     "InstalledItem",
     "InstalledMetadata",
@@ -38,4 +41,5 @@ __all__ = [
     "read_acf_updates",
     "scan_delivered_folder",
     "scan_installed",
+    "scan_installed_all",
 ]

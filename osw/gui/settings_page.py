@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -23,8 +24,8 @@ from . import theme
 class SettingsPage(QWidget):
     """Intent: save_requested(dict). The controller persists and applies."""
 
-    save_requested = Signal(str, str, str, str, str)
-    # content_root, username, use_account(bool→str), password, steamcmd_dir
+    save_requested = Signal(str, str, str, str, str, int)
+    # content_root, username, use_account(bool→str), password, steamcmd_dir, parallel
     desktop_install_requested = Signal()
     desktop_uninstall_requested = Signal()
 
@@ -85,6 +86,17 @@ class SettingsPage(QWidget):
         self.steamcmd_edit.setAccessibleName("SteamCMD folder")
         self.form.addRow("SteamCMD folder", self.steamcmd_edit)
 
+        self.parallel_spin = QSpinBox()
+        self.parallel_spin.setRange(1, 3)
+        self.parallel_spin.setValue(1)
+        self.parallel_spin.setAccessibleName("Parallel SteamCMD downloads")
+        self.parallel_spin.setToolTip(
+            "Download different games at the same time. Items from the same "
+            "game still run one at a time. Extra workers use their own "
+            "SteamCMD workspace."
+        )
+        self.form.addRow("Parallel downloads", self.parallel_spin)
+
         menu_row = QHBoxLayout()
         menu_row.setSpacing(8)
         self.desktop_status = QLabel("Not installed.")
@@ -106,7 +118,7 @@ class SettingsPage(QWidget):
         self.note = QLabel(
             "Anonymous is the default; access depends on each game's Workshop settings.\n"
             "Passwords and Steam Guard codes stay in memory for this session only.\n"
-            "One SteamCMD job runs at a time."
+            "Parallel downloads run different games at once; same-game items stay serialized."
         )
         self.note.setWordWrap(True)
         self.note.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12px;")
@@ -135,21 +147,31 @@ class SettingsPage(QWidget):
 
     # ------------------------------------------------------------- api
 
-    def load(self, content_root: str, username: str, use_account: bool, password: str, steamcmd_dir: str) -> None:
+    def load(
+        self,
+        content_root: str,
+        username: str,
+        use_account: bool,
+        password: str,
+        steamcmd_dir: str,
+        parallel: int = 1,
+    ) -> None:
         self.root_edit.setText(content_root)
         self.user_edit.setText(username)
         self.account_check.setChecked(use_account)
         self.password_edit.setText(password)
         self.steamcmd_edit.setText(steamcmd_dir)
+        self.parallel_spin.setValue(max(1, min(3, int(parallel or 1))))
         self.saved_label.clear()
 
-    def values(self) -> tuple[str, str, bool, str, str]:
+    def values(self) -> tuple[str, str, bool, str, str, int]:
         return (
             self.root_edit.text().strip(),
             self.user_edit.text().strip(),
             self.account_check.isChecked(),
             self.password_edit.text(),
             self.steamcmd_edit.text().strip(),
+            self.parallel_spin.value(),
         )
 
     def _choose_root(self) -> None:
@@ -189,8 +211,15 @@ class SettingsPage(QWidget):
             self.desktop_install_requested.emit()
 
     def _emit_save(self) -> None:
-        content_root, username, use_account, password, steamcmd = self.values()
-        self.save_requested.emit(content_root, username, "true" if use_account else "", password, steamcmd)
+        content_root, username, use_account, password, steamcmd, parallel = self.values()
+        self.save_requested.emit(
+            content_root,
+            username,
+            "true" if use_account else "",
+            password,
+            steamcmd,
+            parallel,
+        )
 
     def confirm_saved(self, message: str = "Settings saved") -> None:
         self.saved_label.setText(message)

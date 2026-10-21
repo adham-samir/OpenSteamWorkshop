@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QItemSelectionModel, Qt
 from PySide6.QtGui import QKeyEvent, QPixmap
-from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
+from PySide6.QtWidgets import QDialog, QLabel, QMessageBox, QPushButton
 
 from osw import __version__, settings
 from osw.bulk import DownloadResolution, ResolutionIssue
@@ -272,7 +272,7 @@ def test_restore_does_not_start_downloads(qapp, tmp_path):
     window = MainWindow(queue_path=path)
     try:
         assert window.manager.jobs[0].state is JobState.INTERRUPTED
-        assert window.manager._thread is None
+        assert not window.manager._threads
         assert len(window._job_rows) == 1
     finally:
         window.close()
@@ -489,6 +489,21 @@ def test_download_actions_route_selected_job(qapp):
     retry = next(button for button in page.action_buttons if button.text() == "Retry")
     retry.click()
     assert seen[-1] == ("job-1", "Retry")
+
+
+def test_status_strip_reports_concurrent_downloads(qapp):
+    strip = StatusStrip()
+    strip.update_from_jobs(
+        [
+            _snap(0, JobState.RUNNING, 20, title="First mod"),
+            _snap(1, JobState.RUNNING, 40, title="Second mod"),
+            _snap(2, JobState.QUEUED),
+        ]
+    )
+    assert strip.title.text() == "2 downloads active"
+    assert "First mod" in strip.message.text()
+    assert strip.running_title == "First mod"
+    assert "2 active" in strip.accessibleName()
 
 
 def test_status_strip_counts_and_activation(qapp):
@@ -1325,6 +1340,127 @@ def test_update_all_cancelled_dialog_queues_nothing(window, tmp_path, monkeypatc
     window._update_all()
 
     assert len(window.manager.jobs) == before
+
+
+def test_settings_parallel_downloads_persist(window):
+    page = window.settings_page
+    window._load_settings()
+    page.parallel_spin.setValue(2)
+    page.save_button.click()
+    assert settings.get("parallel_downloads") == 2
+    assert window.manager.parallel == 2
+
+
+def test_library_cleanup_button_reflects_duplicate_count(qapp, tmp_path):
+    page = LibraryPage()
+    page.show_items([], tmp_path, duplicates=0)
+    assert page.cleanup_btn.text() == "Cleanup"
+    assert page.cleanup_btn.isEnabled() is False
+
+    item = InstalledItem(10, 20, tmp_path / "mod", title="Wiremod")
+    page.show_items([item], tmp_path, duplicates=2)
+    assert page.cleanup_btn.text() == "Cleanup (2)"
+    assert page.cleanup_btn.isEnabled()
+
+
+def test_cleanup_dialog_preselects_safe_copy_and_blocks_deleting_everything(
+    qapp, tmp_path
+):
+    from osw.gui.cleanup_dialog import CleanupDialog
+    from osw.installed import scan_installed_all
+
+    root = tmp_path / "mods"
+    staged = content_dir(root) / "4000" / "100"
+    staged.mkdir(parents=True)
+    (staged / "mod.txt").write_text("installed")
+    game_mods = tmp_path / "RimWorld" / "Mods"
+    delivered = game_mods / "Wiremod"
+    delivered.mkdir(parents=True)
+    (delivered / ".opensteamworkshop.json").write_text(
+        json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+    )
+    _items, groups = scan_installed_all(root, game_paths={4000: game_mods})
+
+    dialog = CleanupDialog(groups)
+    assert [copy.path for copy in dialog.selected_copies()] == [staged]
+    assert dialog.delete_btn.isEnabled()
+    assert "1 copy selected" in dialog.selection_label.text()
+
+    for _copy, check in dialog._rows[0][1]:
+        check.setChecked(True)
+    assert dialog.selected_copies() == []
+    assert dialog.delete_btn.isEnabled() is False
+    assert "Keep at least one" in dialog.warning.text()
+    dialog.deleteLater()
+
+
+def test_cleanup_dialog_two_delivered_copies_start_unchecked(qapp, tmp_path):
+    from osw.gui.cleanup_dialog import CleanupDialog
+    from osw.installed import scan_installed_all
+
+    first = tmp_path / "A" / "Mods" / "Wiremod"
+    second = tmp_path / "B" / "Mods" / "Wiremod"
+    for folder in (first, second):
+        folder.mkdir(parents=True)
+        (folder / ".opensteamworkshop.json").write_text(
+            json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+        )
+    _items, groups = scan_installed_all(
+        tmp_path / "mods", game_paths={4000: first.parent, 4001: second.parent}
+    )
+
+    dialog = CleanupDialog(groups)
+    assert dialog.selected_copies() == []
+    assert any("choose" in label.text().lower() for label in dialog.findChildren(QLabel))
+    dialog._rows[0][1][0][1].setChecked(True)
+    assert [copy.path for copy in dialog.selected_copies()] == [first]
+    dialog.deleteLater()
+
+
+def test_window_cleanup_deletes_selected_copy_and_rescans(
+    window, tmp_path, monkeypatch
+):
+    root = tmp_path / "mods"
+    settings.save({"content_root": str(root)})
+    staged = content_dir(root) / "4000" / "100"
+    staged.mkdir(parents=True)
+    (staged / "mod.txt").write_text("installed")
+    game_mods = tmp_path / "RimWorld" / "Mods"
+    delivered = game_mods / "Wiremod"
+    delivered.mkdir(parents=True)
+    (delivered / ".opensteamworkshop.json").write_text(
+        json.dumps({"appid": 4000, "fileid": 100, "title": "Wiremod"})
+    )
+    window.state.set_game_path(4000, game_mods)
+    from osw.installed import scan_installed_all
+
+    _items, groups = scan_installed_all(root, game_paths={4000: game_mods})
+    window._duplicate_groups = groups
+    rescanned = []
+    window._scan_library = lambda: rescanned.append(True)
+
+    class FakeDialog:
+        def __init__(self, entries, parent=None):
+            self.entries = entries
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def selected_copies(self):
+            return [staged_item]
+
+        def deleteLater(self):
+            pass
+
+    staged_item = groups[0].redundant
+    monkeypatch.setattr("osw.gui.main_window.CleanupDialog", FakeDialog)
+
+    window._review_duplicates()
+
+    assert not staged.exists()
+    assert delivered.is_dir()
+    assert rescanned == [True]
+    assert "Removed 1 duplicate copy" in window.statusBar().currentMessage()
 
 
 def test_settings_desktop_toggle_states(window):

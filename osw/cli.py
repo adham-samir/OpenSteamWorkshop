@@ -6,6 +6,7 @@ import argparse
 import getpass
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -17,8 +18,8 @@ from .desktop import (
     install_desktop_entry,
     uninstall_desktop_entry,
 )
-from .installed import InstalledIndex, check_updates
-from .models import WorkshopItem
+from .installed import InstalledIndex, check_updates, delete_installed_item
+from .models import WorkshopItem, fmt_size
 from .net import NetError
 from .queue import DownloadManager, JobState
 from .settings import get, save
@@ -118,7 +119,16 @@ def cmd_download(args) -> int:
     return _download_items(args, items)
 
 
+_AUTH_LOCK = threading.Lock()
+
+
 def _console_auth(job, kind, prompt, cancel):
+    # Parallel workers must not interleave reads from the same terminal.
+    with _AUTH_LOCK:
+        return _prompt_console(kind, cancel)
+
+
+def _prompt_console(kind, cancel):
     if not sys.stdin.isatty():
         return None
     if kind == "approval":
@@ -306,6 +316,61 @@ def cmd_updates(args):
         manager.shutdown()
 
 
+def cmd_cleanup(args) -> int:
+    root = Path(args.out or get("content_root"))
+    groups = _installed_index(root).duplicates()
+    if not groups:
+        print("No duplicate installs found.")
+        return EXIT_OK
+
+    safe = []
+    ambiguous = []
+    for group in groups:
+        print(f"{group.label}  ({group.game_label}, item {group.fileid})")
+        for copy in group.copies:
+            kind = "delivered" if copy.delivered else "default"
+            size = fmt_size(copy.size) or "unknown size"
+            recommended = copy is group.redundant
+            print(
+                f"  {kind:<9} {size:>9}  {copy.path}"
+                + ("  ← recommended to delete" if recommended else "")
+            )
+        if group.redundant is not None:
+            safe.append(group)
+        else:
+            ambiguous.append(group)
+        print()
+
+    noun = "item" if len(groups) == 1 else "items"
+    print(
+        f"{len(groups)} duplicate {noun} · {len(safe)} safe deletions · "
+        f"{len(ambiguous)} need a choice"
+    )
+    if not args.prune:
+        if safe:
+            print("Run `osw cleanup --prune` to remove the recommended default copies.")
+        return EXIT_OK
+
+    removed = 0
+    failed = False
+    for group in safe:
+        try:
+            delete_installed_item(group.redundant, root)
+        except (OSError, ValueError) as exc:
+            print(f"Could not delete {group.label}: {exc}", file=sys.stderr)
+            failed = True
+            continue
+        removed += 1
+        print(f"Deleted default copy of {group.label}")
+    if ambiguous:
+        print(
+            f"Skipped {len(ambiguous)} items with more than one delivered copy; "
+            "remove one from the Library's Cleanup dialog."
+        )
+    print(f"Removed {removed} duplicate {'copy' if removed == 1 else 'copies'}.")
+    return EXIT_ERR if failed else EXIT_OK
+
+
 def cmd_batch(args):
     references = list(args.references)
     if args.input:
@@ -341,14 +406,13 @@ def cmd_settings(args) -> int:
         if args.username is not None:
             patch["username"] = args.username
         if args.parallel is not None:
-            patch["parallel_downloads"] = 1
-            _p("--parallel is deprecated: SteamCMD operations run one at a time.")
+            patch["parallel_downloads"] = max(1, min(3, int(args.parallel)))
         save(patch)
     s = get("content_root")
     _p("Settings are stored in ~/.config/OpenSteamWorkshop/settings.json")
     _p(f"  content_root = {s!r}")
     _p(f"  username     = {get('username')!r}")
-    _p(f"  parallel     = {get('parallel_downloads')}")
+    _p(f"  parallel     = {get('parallel_downloads')}  (1-3 SteamCMD workers)")
     return EXIT_OK
 
 
@@ -356,12 +420,15 @@ def _build_manager(args) -> DownloadManager:
     # An account is used only when explicitly requested; --anonymous always wins.
     username = "" if args.anonymous else (args.username or "")
     password = os.environ.get("OSW_PASS", "") if username else ""
+    requested = getattr(args, "parallel", None)
+    if requested is None:
+        requested = get("parallel_downloads")
     mgr = DownloadManager(
         content_root=args.out or get("content_root"),
         steamcmd_dir=get("steamcmd_dir") or None,
         username=username,
         password=password,
-        parallel=1,
+        parallel=max(1, min(3, int(requested or 1))),
         on_log=lambda m: print(m, flush=True),
         on_auth=_console_auth,
     )
@@ -404,6 +471,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     d.add_argument("--username", default=None, help="steam username (anonymous if omitted)")
     d.add_argument("--anonymous", action="store_true", help="force anonymous login")
+    d.add_argument(
+        "--parallel",
+        type=int,
+        default=None,
+        metavar="N",
+        help="simultaneous SteamCMD downloads, 1-3 (default from settings)",
+    )
     d.set_defaults(func=cmd_download)
 
     batch = sub.add_parser("batch", help="download URLs, collections or an imported list")
@@ -419,6 +493,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     batch.add_argument("--username", help="optional Steam account; default is anonymous")
     batch.add_argument("--anonymous", action="store_true", help="force anonymous login")
+    batch.add_argument(
+        "--parallel",
+        type=int,
+        default=None,
+        metavar="N",
+        help="simultaneous SteamCMD downloads, 1-3 (default from settings)",
+    )
     batch.set_defaults(func=cmd_batch)
 
     up = sub.add_parser(
@@ -431,7 +512,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     up.add_argument("--username", default=None, help="steam username (anonymous if omitted)")
     up.add_argument("--anonymous", action="store_true", help="force anonymous login")
+    up.add_argument(
+        "--parallel",
+        type=int,
+        default=None,
+        metavar="N",
+        help="simultaneous SteamCMD downloads, 1-3 (default from settings)",
+    )
     up.set_defaults(func=cmd_updates)
+
+    cl = sub.add_parser(
+        "cleanup", help="report or remove duplicate installed copies"
+    )
+    cl.add_argument("--out", default=None, help="content root dir (default from settings)")
+    cl.add_argument(
+        "--prune",
+        action="store_true",
+        help="delete the safe recommendation (default copy when delivered exists)",
+    )
+    cl.set_defaults(func=cmd_cleanup)
 
     di = sub.add_parser(
         "desktop-install", help="add the app to the Linux application menu"
