@@ -1,4 +1,4 @@
-"""Imports workspace: paste links/IDs, resolve, preview, queue. Replaces BulkDialog."""
+"""Imports workspace: paste links/IDs, resolve, preview, queue."""
 
 from __future__ import annotations
 
@@ -151,6 +151,11 @@ class ImportPage(QWidget):
             except OSError as exc:
                 self.summary.setText(f"Could not read {name}: {exc}")
 
+    @property
+    def generation(self) -> int:
+        """Bumped whenever a pending resolution is invalidated."""
+        return self._generation
+
     def _invalidate(self) -> None:
         if getattr(self, "_loading", False):
             return
@@ -169,6 +174,8 @@ class ImportPage(QWidget):
         self._generation += 1
         self.resolve_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        if self.source.toPlainText().strip():
+            self.summary.setText("Resolution stopped.")
 
     def resolve(self) -> None:
         self._invalidate()
@@ -188,11 +195,6 @@ class ImportPage(QWidget):
         self.summary.setText("Resolving items, collections and dependencies…")
         self.issues.clear()
         self.resolve_requested.emit(references, hint, dependencies)
-
-    def resolve_cancelled(self) -> None:
-        self.summary.setText("Resolution stopped.")
-        self.resolve_button.setEnabled(True)
-        self.cancel_button.setEnabled(False)
 
     def resolve_finished(self, result) -> None:
         """Controller callback on the UI thread: render the resolution."""

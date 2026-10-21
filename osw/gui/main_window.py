@@ -1073,8 +1073,7 @@ class MainWindow(QMainWindow):
                 }
                 if locations:
                     self.imports.mark_installed(locations)
-            else:
-                self.imports.resolve_cancelled()
+            # Stale results are dropped silently: the page already reset itself.
 
         def failed(exc):
             if not self._closing and self.imports.generation == generation:

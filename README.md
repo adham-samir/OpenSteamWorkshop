@@ -1,5 +1,7 @@
 # OpenSteamWorkshop
 
+[![Tests](https://github.com/adham-samir/OpenSteamWorkshop/actions/workflows/tests.yml/badge.svg)](https://github.com/adham-samir/OpenSteamWorkshop/actions/workflows/tests.yml)
+
 Browse a game's Steam Workshop from a desktop app and download mods with
 Valve's official **SteamCMD**, without installing the game.
 Anonymous downloads also work without owning the game when its publisher permits them.

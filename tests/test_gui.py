@@ -10,11 +10,10 @@ from PySide6.QtCore import QCoreApplication, QEvent, QItemSelectionModel, Qt
 from PySide6.QtGui import QKeyEvent, QPixmap
 from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton
 
-from osw import settings
+from osw import __version__, settings
 from osw.bulk import DownloadResolution, ResolutionIssue
 from osw.gui.browse_page import MODE_GRID
 from osw.gui.browse_page import BrowsePage as DeskBrowsePage
-from osw.gui.bulk_dialog import BulkDialog
 from osw.gui.downloads_page import DownloadsPage
 from osw.gui.imports_page import ImportPage
 from osw.gui.item_models import (
@@ -66,6 +65,7 @@ def test_settings_open_and_preserve_manager(window):
     window._open_settings()
     assert window.workspace == "settings"
     page = window.settings
+    assert page.version_label.text() == f"OpenSteamWorkshop {__version__}"
     page.root_edit.setText(str(job.dest / "new"))
     page.user_edit.setText("user")
     page.password_edit.setText("session-secret")
@@ -181,24 +181,43 @@ def test_multiselect_opens_preview(window, monkeypatch):
     assert preview.call_args.args == ("20\n21",)
 
 
-def test_bulk_preview_excludes_unchecked_items_and_invalidates(window, qapp, monkeypatch):
-    from osw.bulk import DownloadResolution, ResolutionIssue
-
-    result = DownloadResolution(
-        items=[WorkshopItem(20, appid=10, title="One"), WorkshopItem(21, appid=10, title="Two")],
-        issues=[ResolutionIssue("bad", "Invalid URL")],
+def test_import_resolution_renders_through_the_hub(window, qapp, monkeypatch):
+    monkeypatch.setattr(
+        "osw.bulk.resolve_downloads",
+        lambda *args, **kwargs: DownloadResolution(items=[WorkshopItem(20, appid=10)]),
     )
-    monkeypatch.setattr("osw.gui.bulk_dialog.resolve_downloads", lambda *args: result)
+    page = window.imports
+    page.set_source("20", hint="", dependencies=False)
+    pump(qapp, lambda: page.resolution is not None)
+    assert page.tmodel.row_count() == 1
+    assert page.queue_button.isEnabled()
+
+
+def test_import_preview_reports_issues_and_excludes_unchecked_items(qapp):
+    page = ImportPage()
     queued = []
-    dialog = BulkDialog(window.hub, queued.extend, window)
-    dialog.source.setPlainText("20\n21")
-    dialog.resolve()
-    pump(qapp, lambda: dialog.resolution is not None)
-    assert "bad" in dialog.issues.toPlainText()
-    dialog.table.item(1, 0).setCheckState(Qt.Unchecked)
-    dialog._queue_selected()
+    page.queue_requested.connect(lambda items: queued.extend(items))
+    page.resolve_finished(
+        DownloadResolution(
+            items=[
+                WorkshopItem(20, appid=10, title="One"),
+                WorkshopItem(21, appid=10, title="Two"),
+            ],
+            issues=[ResolutionIssue("bad", "Invalid URL")],
+        )
+    )
+    assert "bad" in page.issues.toPlainText()
+    assert page.queue_button.isEnabled()
+    page.tmodel.setData(page.tmodel.index(1, 0), Qt.Unchecked, Qt.CheckStateRole)
+    page._queue_selected()
     assert [item.publishedfileid for item in queued] == [20]
-    dialog.deleteLater()
+
+    page.source.setPlainText("20\n21")
+    assert page.resolution is None
+    assert page.tmodel.row_count() == 0
+    assert not page.queue_button.isEnabled()
+    assert "resolve it" in page.summary.text().lower()
+    page.deleteLater()
 
 
 def test_auth_cancelled_before_dialog_is_not_shown(window, monkeypatch):
@@ -216,24 +235,26 @@ def test_auth_cancelled_before_dialog_is_not_shown(window, monkeypatch):
 def test_import_edit_or_close_cancels_resolution(window, monkeypatch):
     callbacks = []
     monkeypatch.setattr(window.hub, "call", lambda fn, done, **kw: callbacks.append(done))
-    dialog = BulkDialog(window.hub, lambda items: None, window)
-    dialog.source.setPlainText("20")
-    dialog.resolve()
-    first_cancel = dialog._cancel
-    dialog.source.setPlainText("21")
+    page = window.imports
+
+    page.set_source("20", hint="", dependencies=False)
+    first_cancel = page._cancel
+    page.source.setPlainText("21")
     assert first_cancel.is_set()
-    from osw.bulk import DownloadResolution
 
     callbacks[0](DownloadResolution(items=[WorkshopItem(20, appid=10)]))
-    assert dialog.resolution is None
-    assert not dialog.queue_button.isEnabled()
-    dialog.resolve()
-    current_cancel = dialog._cancel
-    dialog.reject()
+    assert page.resolution is None
+    assert not page.queue_button.isEnabled()
+    assert "resolve it" in page.summary.text().lower()
+
+    page.resolve()
+    current_cancel = page._cancel
+    page._stop()  # what the Stop button and window close both do
     assert current_cancel.is_set()
+
     callbacks[1](DownloadResolution(items=[WorkshopItem(21, appid=10)]))
-    assert dialog.resolution is None
-    dialog.deleteLater()
+    assert page.resolution is None
+    assert page.summary.text() == "Resolution stopped."
 
 
 def test_restore_does_not_start_downloads(qapp, tmp_path):
@@ -412,7 +433,6 @@ def test_imports_selection_and_stop(qapp):
     assert page.cancel_button.isEnabled()
 
     page._stop()
-    page.resolve_cancelled()
     assert "stopped" in page.summary.text().lower()
     assert not page.cancel_button.isEnabled()
     assert not page.queue_button.isEnabled()

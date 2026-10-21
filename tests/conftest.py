@@ -11,6 +11,10 @@ from osw import settings
 def isolated_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "CONFIG_DIR", tmp_path / "config")
     monkeypatch.setattr(settings, "CONFIG_FILE", tmp_path / "config/settings.json")
+    # Keep filesystem scans off the developer's real ~/SteamMods folder.
+    defaults = dict(settings.DEFAULTS)
+    defaults["content_root"] = str(tmp_path / "mods")
+    monkeypatch.setattr(settings, "DEFAULTS", defaults)
     monkeypatch.setattr(settings, "_LAST", {})
 
 

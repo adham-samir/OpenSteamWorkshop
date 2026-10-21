@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from . import theme
 
 
@@ -104,6 +105,11 @@ class SettingsPage(QWidget):
         buttons.addWidget(self.save_btn)
         v.addLayout(buttons)
         v.addStretch(1)
+
+        self.version_label = QLabel(f"OpenSteamWorkshop {__version__}")
+        self.version_label.setAccessibleName("Application version")
+        self.version_label.setStyleSheet(f"color: {theme.TEXT2}; font-size: 11.5px;")
+        v.addWidget(self.version_label)
 
         self.save_btn.clicked.connect(self._emit_save)
 
