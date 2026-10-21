@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Transfer Desk — Browse comp</title>
+<style>
+  :root {
+    --bg:#101317; --surface:#171C22; --raised:#1F2630; --border:#2E3742;
+    --text:#F3F6F8; --muted:#98A3AF; --accent:#45B8F5; --accent-ink:#071219;
+    --accent-dim:#173243; --green:#4ADE80; --amber:#FBBF24; --red:#FF7A7A;
+    --rail:#0C1014;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; width:1440px; height:900px; overflow:hidden; }
+  body {
+    background:var(--bg); color:var(--text);
+    font-family: Ubuntu, Cantarell, "Noto Sans", "Segoe UI", sans-serif;
+    font-size:13px; -webkit-font-smoothing:antialiased;
+  }
+  .mono { font-family: "Ubuntu Mono", "DejaVu Sans Mono", monospace; }
+  .app { display:grid; grid-template-columns:208px 1fr; grid-template-rows:1fr 52px; width:1440px; height:900px; }
+  .sidebar { grid-row:1 / 3; background:var(--rail); border-right:1px solid var(--border); padding:18px 12px; display:flex; flex-direction:column; }
+  .brand { display:flex; gap:10px; align-items:center; padding:4px 8px 20px; }
+  .brandmark { width:30px; height:30px; border:1px solid var(--accent); border-radius:8px; display:grid; place-items:center; color:var(--accent); }
+  .brandname { font-size:13px; font-weight:600; letter-spacing:.01em; }
+  .brandsub { font-size:9px; color:var(--muted); letter-spacing:.16em; margin-top:2px; }
+  .navlabel { color:var(--muted); font-size:10px; letter-spacing:.14em; padding:4px 10px 8px; }
+  .nav { display:flex; flex-direction:column; gap:4px; }
+  .navitem { height:40px; display:flex; align-items:center; gap:10px; padding:0 11px; border:1px solid transparent; border-radius:7px; color:var(--muted); }
+  .navitem.active { background:#18242E; border-color:#2B3A47; color:var(--text); }
+  .navitem.active .ico { color:var(--accent); }
+  .navitem .ico { width:18px; display:grid; place-items:center; }
+  .navitem .count { margin-left:auto; min-width:19px; height:19px; padding:0 5px; border-radius:10px; background:#26313C; color:var(--text); font-size:10px; display:grid; place-items:center; }
+  .navspacer { flex:1; }
+  .sidebar-foot { border-top:1px solid var(--border); padding-top:10px; }
+  .version { color:#66717D; font-size:10px; padding:10px 11px 0; }
+  .main { grid-column:2; display:flex; flex-direction:column; min-width:0; }
+  .topbar { height:74px; border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 24px; gap:18px; flex:none; }
+  .pagehead { min-width:210px; }
+  .pagetitle { font-size:19px; font-weight:600; letter-spacing:.01em; }
+  .pagesub { color:var(--muted); font-size:11px; margin-top:4px; }
+  .search { margin-left:auto; width:430px; height:36px; background:#151A20; border:1px solid var(--border); border-radius:7px; display:flex; align-items:center; gap:9px; padding:0 11px; color:var(--muted); }
+  .search .kbd { margin-left:auto; border:1px solid var(--border); border-radius:4px; padding:2px 6px; font-size:10px; color:var(--muted); }
+  .btn { height:34px; border-radius:6px; border:1px solid var(--border); background:var(--raised); color:var(--text); padding:0 13px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:500; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .btn.ghost { background:transparent; }
+  .btn.small { height:28px; padding:0 9px; font-size:11px; }
+  .content { flex:1; padding:18px 24px 14px; min-height:0; display:flex; flex-direction:column; gap:14px; }
+  .gamebar { display:flex; align-items:center; gap:12px; flex:none; }
+  .back { width:32px; height:32px; border:1px solid var(--border); border-radius:6px; display:grid; place-items:center; color:var(--muted); }
+  .game-title { font-size:17px; font-weight:600; }
+  .game-meta { color:var(--muted); font-size:11px; margin-top:3px; display:flex; gap:8px; align-items:center; }
+  .chip { border:1px solid var(--border); background:#151A20; border-radius:10px; padding:2px 7px; font-size:10px; color:var(--muted); }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; }
+  .chip.accent { color:var(--accent); border-color:#2A4A5D; background:#122430; }
+  .toolrow { display:flex; align-items:center; gap:8px; flex:none; }
+  .field { height:34px; background:#151A20; border:1px solid var(--border); border-radius:7px; display:flex; align-items:center; padding:0 10px; gap:8px; color:var(--muted); }
+  .field.grow { flex:1; }
+  .select { width:142px; justify-content:space-between; }
+  .pager { color:var(--muted); font-size:11px; padding:0 5px; white-space:nowrap; }
+  .iconbtn { width:32px; height:32px; border:1px solid var(--border); border-radius:6px; background:var(--raised); color:var(--muted); display:grid; place-items:center; }
+  .workspace { display:grid; grid-template-columns: minmax(0,1fr) 354px; gap:16px; flex:1; min-height:0; }
+  .grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; align-content:start; min-height:0; overflow:hidden; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:8px; display:flex; flex-direction:column; min-width:0; height:258px; }
+  .card.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; background:#19222B; }
+  .thumb { height:116px; border-radius:6px; background:#222B35; border:1px solid #2A3440; position:relative; overflow:hidden; flex:none; }
+  .thumb .art { position:absolute; inset:0; display:grid; place-items:center; color:#526273; }
+  .thumb .kind { position:absolute; left:7px; top:7px; font-size:8px; letter-spacing:.12em; color:#8C99A6; background:#151B22; border:1px solid #2E3742; padding:2px 5px; border-radius:4px; }
+  .thumb .check { position:absolute; right:7px; top:7px; width:18px; height:18px; border-radius:9px; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; font-size:11px; font-weight:700; }
+  .cardtitle { font-size:12.5px; line-height:16px; font-weight:600; margin-top:9px; height:32px; overflow:hidden; }
+  .cardmeta { color:var(--muted); font-size:10.5px; display:flex; align-items:center; gap:7px; margin-top:2px; white-space:nowrap; }
+  .dot { color:#4A5663; }
+  .star { color:var(--amber); }
+  .cardtags { display:flex; gap:4px; margin-top:7px; overflow:hidden; }
+  .tag { background:#1A222B; border:1px solid #2A3440; color:#A9B4C0; font-size:9.5px; border-radius:4px; padding:2px 5px; white-space:nowrap; }
+  .inspector { background:var(--surface); border:1px solid var(--border); border-radius:9px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .inspector-head { height:40px; border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 13px; color:var(--muted); font-size:10px; letter-spacing:.14em; flex:none; }
+  .inspector-head .x { margin-left:auto; color:var(--muted); font-size:15px; }
+  .inspector-body { padding:14px; overflow:hidden; flex:1; min-height:0; }
+  .inspector h2 { font-size:16px; line-height:21px; margin:0 0 5px; font-weight:600; }
+  .byline { color:var(--muted); font-size:11px; }
+  .idline { color:#7E8B99; font-size:10px; margin-top:7px; }
+  .statgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin:13px 0; padding:11px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .stat .k { color:var(--muted); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; }
+  .stat .v { font-size:12px; margin-top:2px; }
+  .sectionlabel { color:var(--muted); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; margin:11px 0 6px; }
+  .desc { color:#C7D0D8; font-size:11.5px; line-height:17px; margin:0; }
+  .req { display:flex; flex-direction:column; gap:6px; }
+  .reqrow { display:flex; gap:8px; align-items:center; color:#C7D0D8; font-size:11px; }
+  .reqrow .n { color:var(--muted); font-size:10px; }
+  .inspector-actions { border-top:1px solid var(--border); padding:11px; display:grid; grid-template-columns:1fr 1fr; gap:7px; flex:none; }
+  .inspector-actions .wide { grid-column:1 / 3; }
+  .statusstrip { grid-column:2; height:52px; border-top:1px solid var(--border); background:var(--rail); display:flex; align-items:center; gap:14px; padding:0 24px; font-size:11.5px; }
+  .statusicon { width:22px; height:22px; border-radius:11px; display:grid; place-items:center; background:#132B36; color:var(--accent); }
+  .status-title { max-width:360px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .status-title b { font-weight:600; }
+  .progress { width:180px; height:6px; border-radius:3px; background:#26313C; overflow:hidden; }
+  .progress span { display:block; height:100%; width:42%; background:var(--accent); border-radius:3px; }
+  .pct { color:var(--muted); font-size:10.5px; width:34px; }
+  .statuscount { color:var(--muted); display:flex; align-items:center; gap:5px; }
+  .statuscount.bad { color:var(--red); }
+  .statuscount .dotc { width:6px; height:6px; border-radius:3px; background:currentColor; }
+  .open { margin-left:auto; color:var(--accent); font-size:11.5px; display:flex; align-items:center; gap:5px; }
+  .hint { color:#7F8B98; font-size:10.5px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brandmark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 19h16"/></svg>
+      </div>
+      <div><div class="brandname">OpenSteamWorkshop</div><div class="brandsub">TRANSFER DESK</div></div>
+    </div>
+    <div class="navlabel">WORKSPACES</div>
+    <nav class="nav">
+      <div class="navitem active"><span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>Browse</div>
+      <div class="navitem"><span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg></span>Imports</div>
+      <div class="navitem"><span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M4 18h16"/></svg></span>Downloads<span class="count">3</span></div>
+    </nav>
+    <div class="navspacer"></div>
+    <div class="sidebar-foot">
+      <div class="navitem"><span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h2"/><path d="M10 17h10"/><circle cx="8" cy="17" r="2"/></svg></span>Settings</div>
+      <div class="version">v0.1.0 · Linux</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="pagehead"><div class="pagetitle">Browse</div><div class="pagesub">Project Zomboid · Workshop</div></div>
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+        <span>Search games or paste a Workshop link</span><span class="kbd">Ctrl F</span>
+      </div>
+      <button class="btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>Import links</button>
+    </header>
+
+    <div class="content">
+      <div class="gamebar">
+        <div class="back"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></div>
+        <div><div class="game-title">Project Zomboid</div><div class="game-meta"><span>App ID</span><span class="mono">108600</span><span class="dot">·</span><span>1,284 items</span><span class="dot">·</span><span>Anonymous access available</span></div></div>
+        <div style="margin-left:auto"><button class="btn ghost small">Change game</button></div>
+      </div>
+
+      <div class="toolrow">
+        <div class="field grow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+          <span>Search this game's Workshop</span>
+        </div>
+        <button class="btn small">Search</button>
+        <div class="field select"><span>Most popular</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div>
+        <div class="iconbtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></div>
+        <span class="pager">1 / 43</span>
+        <div class="iconbtn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+      </div>
+
+      <div class="workspace">
+        <div class="grid">
+          <article class="card selected">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg></div><span class="kind">MAP</span><span class="check">✓</span></div>
+            <div class="cardtitle">Project Zomboid Map Expansion</div>
+            <div class="cardmeta"><span>1.2 GB</span><span class="dot">·</span><span>214k subs</span><span class="dot">·</span><span class="star">★ 4.8</span></div>
+            <div class="cardtags"><span class="tag">Maps</span><span class="tag">Build 42</span><span class="tag">Multiplayer</span></div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></div><span class="kind">MECHANICS</span></div>
+            <div class="cardtitle">Auto Mechanics — Vehicle Overhaul</div>
+            <div class="cardmeta"><span>48.6 MB</span><span class="dot">·</span><span>96k subs</span><span class="dot">·</span><span class="star">★ 4.7</span></div>
+            <div class="cardtags"><span class="tag">Vehicles</span><span class="tag">Realism</span></div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 8h14v11H5z"/><path d="M9 8V5h6v3M9 13h6"/></svg></div><span class="kind">ITEMS</span></div>
+            <div class="cardtitle">Hydrocraft Continued</div>
+            <div class="cardmeta"><span>612 MB</span><span class="dot">·</span><span>71k subs</span><span class="dot">·</span><span class="star">★ 4.5</span></div>
+            <div class="cardtags"><span class="tag">Crafting</span><span class="tag">Items</span></div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m4 20 4-1 10-10a2.8 2.8 0 0 0-4-4L4 15z"/><path d="m13 6 5 5"/></svg></div><span class="kind">WEAPONS</span></div>
+            <div class="cardtitle">Brita's Weapon Pack</div>
+            <div class="cardmeta"><span>1.9 GB</span><span class="dot">·</span><span>188k subs</span><span class="dot">·</span><span class="star">★ 4.9</span></div>
+            <div class="cardtags"><span class="tag">Weapons</span><span class="tag">Loot</span></div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2.7-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 20c0-2.6 1.2-4.4 3.4-4.9"/></svg></div><span class="kind">NPC</span></div>
+            <div class="cardtitle">Superb Survivors! — NPCs and Story</div>
+            <div class="cardmeta"><span>288 MB</span><span class="dot">·</span><span>54k subs</span><span class="dot">·</span><span class="star">★ 4.3</span></div>
+            <div class="cardtags"><span class="tag">NPCs</span><span class="tag">Scenarios</span></div>
+          </article>
+          <article class="card">
+            <div class="thumb"><div class="art"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M12 3 4 7v6c0 4.5 3.2 7.3 8 8 4.8-.7 8-3.5 8-8V7z"/><path d="m9 12 2 2 4-5"/></svg></div><span class="kind">TRAITS</span></div>
+            <div class="cardtitle">More Traits</div>
+            <div class="cardmeta"><span>12.4 MB</span><span class="dot">·</span><span>132k subs</span><span class="dot">·</span><span class="star">★ 4.6</span></div>
+            <div class="cardtags"><span class="tag">Traits</span><span class="tag">Balance</span></div>
+          </article>
+        </div>
+
+        <aside class="inspector">
+          <div class="inspector-head">INSPECTOR <span class="x">×</span></div>
+          <div class="inspector-body">
+            <h2>Project Zomboid Map Expansion</h2>
+            <div class="byline">by <span style="color:#C7D0D8">Fenbryl</span> · updated 2026-09-14</div>
+            <div class="idline mono">Workshop ID 2890389132</div>
+            <div class="statgrid">
+              <div class="stat"><div class="k">Size</div><div class="v">1.2 GB</div></div>
+              <div class="stat"><div class="k">Subscribers</div><div class="v">214,382</div></div>
+              <div class="stat"><div class="k">Rating</div><div class="v"><span class="star">★</span> 4.8 <span class="hint">(12,430)</span></div></div>
+              <div class="stat"><div class="k">Access</div><div class="v" style="color:var(--green)">Public</div></div>
+            </div>
+            <div class="chips"><span class="tag">Maps</span><span class="tag">Build 42</span><span class="tag">Multiplayer</span><span class="tag">Safehouse</span></div>
+            <div class="sectionlabel">About</div>
+            <p class="desc">Adds a dense, hand-built map region north of Louisville with new towns, roads, foraging zones and over 40 enterable buildings. Designed for existing saves.</p>
+            <div class="sectionlabel">Required items · 2</div>
+            <div class="req">
+              <div class="reqrow"><span class="mono n">2890388001</span> Project Zomboid Map Base <span style="margin-left:auto;color:var(--muted)">Required</span></div>
+              <div class="reqrow"><span class="mono n">2890388114</span> Shared Map Assets <span style="margin-left:auto;color:var(--muted)">Required</span></div>
+            </div>
+          </div>
+          <div class="inspector-actions">
+            <button class="btn primary wide">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M4 18h16"/></svg>
+              Download mod
+            </button>
+            <button class="btn">Review import</button>
+            <button class="btn ghost">Open in browser ↗</button>
+          </div>
+        </aside>
+      </div>
+      <div class="hint">Ctrl/Shift-click to select multiple mods · Enter opens the inspector · Esc clears selection</div>
+    </div>
+  </main>
+
+  <footer class="statusstrip">
+    <div class="statusicon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M4 18h16"/></svg></div>
+    <div class="status-title"><b>Downloading</b> · Project Zomboid Map Expansion</div>
+    <div class="progress"><span></span></div>
+    <div class="pct">42%</div>
+    <div class="statuscount"><span class="dotc"></span>2 queued</div>
+    <div class="statuscount bad"><span class="dotc"></span>1 needs attention</div>
+    <div class="open">Open Downloads <span>›</span></div>
+  </footer>
+</div>
+</body>
+</html>
