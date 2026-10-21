@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-10-21T22:22:52.719623+00:00",
+  "captured_at": "2026-10-21T23:30:00.306503+00:00",
   "source": "Visible app window captured by KDE Spectacle",
   "platform": "xcb",
   "window_size": [
@@ -48,16 +48,16 @@
       "artwork_url": "https://images.steamusercontent.com/ugc/16923898133300573039/D4A4CCD9735A92D3E7E3B558A261711D4EA596BB/"
     },
     {
-      "id": 3415418882,
-      "title": "Restore Position (Context Menu)",
-      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3415418882",
-      "artwork_url": "https://images.steamusercontent.com/ugc/40070177346676739/B38ECA12974173F71D101A9816422592C9E91B8A/"
-    },
-    {
       "id": 3752650127,
       "title": "Infinity Pools",
       "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3752650127",
       "artwork_url": "https://images.steamusercontent.com/ugc/11058738981233814769/7DCC8A19E59B2D6DF70628F232BFF3353EEF4355/"
+    },
+    {
+      "id": 3415418882,
+      "title": "Restore Position (Context Menu)",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=3415418882",
+      "artwork_url": "https://images.steamusercontent.com/ugc/40070177346676739/B38ECA12974173F71D101A9816422592C9E91B8A/"
     },
     {
       "id": 3606384767,

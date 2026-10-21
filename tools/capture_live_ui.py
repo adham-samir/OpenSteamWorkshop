@@ -31,6 +31,7 @@ def capture_live(out: Path, *, desktop: bool = False) -> None:
         profile = Path(temporary)
         settings.CONFIG_DIR = profile
         settings.CONFIG_FILE = profile / "settings.json"
+        settings.DEFAULTS = dict(settings.DEFAULTS, content_root="/home/player/SteamMods")
         settings._LAST = {}
         main_window.CONFIG_DIR = profile
         main_window.CACHE_DIR = profile / "thumbs"

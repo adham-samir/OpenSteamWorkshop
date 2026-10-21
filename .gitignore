@@ -9,7 +9,13 @@ dist/
 .vscode/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 graphify-out/
+*.log
+.DS_Store
+Thumbs.db
 
 # Full native screenshot review matrix; curated captures live in docs/screenshots.
 .impeccable/review/

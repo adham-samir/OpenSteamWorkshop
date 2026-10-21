@@ -21,6 +21,6 @@ The tool opens the app with a temporary profile, searches and browses through
 mouse/keyboard events, and saves the visible window. Review the captures before
 copying them here.
 
-Captured: **2026-10-21T22:22:52.719623+00:00**.
+Captured: **2026-10-21T23:30:00.306503+00:00**.
 Artwork belongs to the game publishers and mod authors.
 [Capture metadata and artwork sources](live-capture.json).
