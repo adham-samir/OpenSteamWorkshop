@@ -55,7 +55,7 @@ class WorkshopItem:
     short_description: str = ""
     preview_url: str = ""
     creator: str = ""  # steamid64
-    author: str = ""   # resolved personaname (detail page)
+    author: str = ""  # resolved personaname (detail page)
     author_url: str = ""
     file_size: int = 0
     tags: list[str] = field(default_factory=list)
@@ -66,7 +66,7 @@ class WorkshopItem:
     favorited: int = 0
     views: int = 0
     num_comments: int = 0
-    star_rating: float = 0.0   # 0..5
+    star_rating: float = 0.0  # 0..5
     total_votes: int = 0
     file_type: int = 0
 
@@ -80,33 +80,44 @@ class WorkshopItem:
             if v in (None, ""):
                 return 0
             try:
-                return int(float(v))
+                return int(v)
             except (TypeError, ValueError):
                 return 0
 
         nbytes = _int(d.get("file_size"))
         if not nbytes:
             nbytes = _int(d.get("file_size", "0"))
-        tags = [t.get("display_name") or t.get("tag", "") for t in (d.get("tags") or [])]
+        tags = [
+            (t.get("display_name") or t.get("tag", "")) if isinstance(t, dict) else str(t)
+            for t in (d.get("tags") or [])
+        ]
+        children = [
+            c.get("publishedfileid") if isinstance(c, dict) else c
+            for c in (d.get("children") or [])
+        ]
+        try:
+            rating = float(d.get("star_rating") or 0)
+        except (TypeError, ValueError):
+            rating = 0.0
         return cls(
             publishedfileid=_int(d.get("publishedfileid")),
-            appid=_int(d.get("consumer_appid")) or appid,
+            appid=_int(d.get("consumer_appid") or d.get("consumer_app_id")) or appid,
             title=(d.get("title") or "").strip(),
             short_description=(d.get("short_description") or "").strip(),
             preview_url=d.get("preview_url") or "",
             creator=str(d.get("creator") or ""),
             file_size=nbytes,
             tags=[t for t in tags if t],
-            children=[_int(c) for c in (d.get("children") or []) if _int(c)],
+            children=[_int(c) for c in children if _int(c) > 0],
             time_created=_int(d.get("time_created")),
             time_updated=_int(d.get("time_updated")),
             subscriptions=_int(d.get("lifetime_subscriptions")) or _int(d.get("subscriptions")),
             favorited=_int(d.get("lifetime_favorited")) or _int(d.get("favorited")),
             views=_int(d.get("views")),
             num_comments=_int(d.get("num_comments_public")),
-            star_rating=float(d.get("star_rating") or 0.0),
+            star_rating=rating,
             total_votes=_int(d.get("total_votes")),
-            file_type=_int(d.get("file_type")),
+            file_type=_int(d.get("file_type", d.get("filetype"))),
         )
 
 
@@ -126,3 +137,4 @@ class ItemDetails:
     required_items: list[tuple[int, str]] = field(default_factory=list)  # (fileid, title)
     preview_url: str = ""
     error: str = ""
+    file_type: int = 0

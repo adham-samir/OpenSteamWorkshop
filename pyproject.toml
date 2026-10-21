@@ -13,7 +13,7 @@ authors = [{ name = "doma" }]
 dependencies = ["PySide6>=6.6"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest>=7", "ruff"]
 
 [project.scripts]
 osw = "osw.cli:main"
@@ -21,3 +21,13 @@ osw-gui = "osw.gui.main_window:run"
 
 [tool.setuptools.packages.find]
 include = ["osw*"]
+
+[tool.setuptools.package-data]
+"osw.gui" = ["icons/*.svg"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

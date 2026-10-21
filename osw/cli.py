@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import getpass
+import os
 import sys
+import time
+from pathlib import Path
 
 from . import __version__
+from .bulk import resolve_downloads
 from .models import WorkshopItem
+from .net import NetError
 from .queue import DownloadManager, JobState
-from .settings import DEFAULTS, get, save
+from .settings import get, save
 from .steam_api import (
     SORTS,
     browse_workshop,
@@ -16,8 +22,7 @@ from .steam_api import (
     resolve_ids,
     search_games,
 )
-from .steamcmd import SteamCMD, SteamCMDError
-from .net import NetError
+from .steamcmd import SteamCMDError
 
 EXIT_OK = 0
 EXIT_ERR = 1
@@ -25,6 +30,7 @@ EXIT_NOT_OWNED = 2
 
 
 # --------------------------------------------------------------------- views
+
 
 def _p(*a):
     print(*a)
@@ -48,7 +54,10 @@ def cmd_browse(args) -> int:
     per = min(50, max(1, args.count))
     try:
         items, total, pages = browse_workshop(
-            appid, page=page, per_page=per, sort=args.sort,
+            appid,
+            page=page,
+            per_page=per,
+            sort=args.sort,
             search_text=" ".join(args.search or []),
         )
     except NetError as e:
@@ -63,7 +72,9 @@ def cmd_browse(args) -> int:
         subs = f"{it.subscriptions:,}"
         stars = f"★{it.star_rating:.1f}" if it.star_rating else "-"
         print(f"{it.publishedfileid:>11} {size:>9} {subs:>10} {stars:>5}  {it.title}")
-    _p(f"\nTip: osw info {items[0].publishedfileid} | osw download {appid} {items[0].publishedfileid}")
+    _p(
+        f"\nTip: osw info {items[0].publishedfileid} | osw download {appid} {items[0].publishedfileid}"
+    )
     return EXIT_OK
 
 
@@ -94,34 +105,86 @@ def cmd_info(args) -> int:
 
 
 def cmd_download(args) -> int:
-    appid = int(args.appid)
+    items = [
+        WorkshopItem(publishedfileid=n, appid=int(args.appid)) for n in dict.fromkeys(args.fileid)
+    ]
+    return _download_items(args, items)
+
+
+def _console_auth(job, kind, prompt, cancel):
+    if not sys.stdin.isatty():
+        return None
+    if kind == "approval":
+        print("Approve the Steam sign-in request in your Steam mobile app.", flush=True)
+        return ""
+    label = "Steam password: " if kind == "password" else "Steam Guard code: "
+    if os.name == "nt":  # pragma: no cover
+        return getpass.getpass(label)
+    import select
+    import termios
+
+    fd = sys.stdin.fileno()
+    original = termios.tcgetattr(fd)
+    no_echo = list(original)
+    no_echo[3] &= ~termios.ECHO
     try:
-        manager = _build_manager(args)
-        manager.steamcmd().ensure_installed(log=lambda m: print(m))
-    except (SteamCMDError, Exception) as e:
-        _p(f"Error: {e}")
+        termios.tcsetattr(fd, termios.TCSANOW, no_echo)
+        print(label, end="", file=sys.stderr, flush=True)
+        value = bytearray()
+        while not cancel.is_set():
+            ready, _, _ = select.select([fd], [], [], 0.1)
+            if ready:
+                chunk = os.read(fd, 1024)
+                if not chunk:
+                    return None
+                value.extend(chunk)
+                if b"\n" in value:
+                    return value.split(b"\n", 1)[0].decode("utf-8").rstrip("\r")
+        return None
+    finally:
+        termios.tcsetattr(fd, termios.TCSANOW, original)
+        print(file=sys.stderr, flush=True)
+
+
+def _download_items(args, items, had_issues=False):
+    if not items:
         return EXIT_ERR
+    manager = _build_manager(args)
+    try:
+        jobs = manager.add_many(items)
+        last = {}
+        while any(
+            j.state in (JobState.QUEUED, JobState.RUNNING, JobState.WAITING_FOR_AUTH) for j in jobs
+        ):
+            for job in jobs:
+                if last.get(job.id) != job.state:
+                    print(f"[{job.fileid}] {job.state.value}: {job.title}", flush=True)
+                    last[job.id] = job.state
+            time.sleep(0.05)
+        for job in jobs:
+            print(f"[{job.fileid}] {job.state.value}: {job.message}")
+        failures = [j for j in jobs if j.state is not JobState.DONE]
+        if failures and all(j.error_kind == "access" for j in failures) and not had_issues:
+            return EXIT_NOT_OWNED  # retained exit code; access denied does not prove non-ownership
+        return EXIT_ERR if failures or had_issues else EXIT_OK
+    finally:
+        manager.shutdown()
 
-    failed = False
-    for fileid in args.fileid:
-        job = manager.add_direct(appid, fileid)
-        last_state = None
-        while True:
-            if job.state is not last_state:
-                last_state = job.state
-                if job.state is JobState.RUNNING:
-                    print(f"[{job.fileid}] downloading {job.title} ...")
-            if job.state in (JobState.DONE, JobState.FAILED):
-                break
-            import time
 
-            time.sleep(0.3)
-        if job.state is JobState.FAILED:
-            print(f"[{job.fileid}] FAILED: {job.message}")
-            failed = True
-        else:
-            print(f"[{job.fileid}] done → {job.message}")
-    return EXIT_ERR if failed else EXIT_OK
+def cmd_batch(args):
+    references = list(args.references)
+    if args.input:
+        references.append(Path(args.input).read_text(encoding="utf-8"))
+    if not references:
+        raise ValueError("Supply Workshop URLs/IDs or --input FILE")
+    resolved = resolve_downloads(references, args.appid, args.with_dependencies)
+    for issue in resolved.issues:
+        print(f"Skipped {issue.reference}: {issue.message}", file=sys.stderr)
+    print(
+        f"Resolved {len(resolved.items)} mods, {resolved.collections} collections, "
+        f"{resolved.duplicates} duplicate references"
+    )
+    return _download_items(args, resolved.items, bool(resolved.issues))
 
 
 def cmd_url(args) -> int:
@@ -143,7 +206,8 @@ def cmd_settings(args) -> int:
         if args.username is not None:
             patch["username"] = args.username
         if args.parallel is not None:
-            patch["parallel_downloads"] = max(1, args.parallel)
+            patch["parallel_downloads"] = 1
+            _p("--parallel is deprecated: SteamCMD operations run one at a time.")
         save(patch)
     s = get("content_root")
     _p("Settings are stored in ~/.config/OpenSteamWorkshop/settings.json")
@@ -154,27 +218,23 @@ def cmd_settings(args) -> int:
 
 
 def _build_manager(args) -> DownloadManager:
-    username = args.username or (get("username") if not args.anonymous else "") or ""
-    password = ""
-    if username and not args.anonymous:
-        import getpass
-
-        password = getpass.getpass(f"Steam password for {username} (blank = env OSW_PASS): ")
-        password = password or __import__("os").environ.get("OSW_PASS", "")
+    # An account is used only when explicitly requested; --anonymous always wins.
+    username = "" if args.anonymous else (args.username or "")
+    password = os.environ.get("OSW_PASS", "") if username else ""
     mgr = DownloadManager(
         content_root=args.out or get("content_root"),
         steamcmd_dir=get("steamcmd_dir") or None,
         username=username,
-        password="",
-        parallel=get("parallel_downloads"),
-        on_log=lambda m: None,
+        password=password,
+        parallel=1,
+        on_log=lambda m: print(m, flush=True),
+        on_auth=_console_auth,
     )
-    # password never flows through settings; only in-memory here
-    mgr.password = password
     return mgr
 
 
 # -------------------------------------------------------------------- parser
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -208,6 +268,18 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--anonymous", action="store_true", help="force anonymous login")
     d.set_defaults(func=cmd_download)
 
+    batch = sub.add_parser("batch", help="download URLs, collections or an imported list")
+    batch.add_argument("references", nargs="*", help="Workshop URLs or item IDs")
+    batch.add_argument("--input", metavar="FILE", help="UTF-8 text file of Workshop URLs or IDs")
+    batch.add_argument("--appid", type=int, help="fallback game ID for items without one")
+    batch.add_argument(
+        "--with-dependencies", action="store_true", help="resolve required items recursively"
+    )
+    batch.add_argument("--out", help="content root directory")
+    batch.add_argument("--username", help="optional Steam account; default is anonymous")
+    batch.add_argument("--anonymous", action="store_true", help="force anonymous login")
+    batch.set_defaults(func=cmd_batch)
+
     u = sub.add_parser("url", help="parse a pasted steam URL into ids")
     u.add_argument("text", nargs="+")
     u.set_defaults(func=cmd_url)
@@ -227,6 +299,9 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         _p("\ninterrupted")
         return 130
+    except (NetError, SteamCMDError, OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return EXIT_ERR
 
 
 if __name__ == "__main__":
