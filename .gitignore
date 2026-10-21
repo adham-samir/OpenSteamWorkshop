@@ -10,3 +10,6 @@ dist/
 .pytest_cache/
 .ruff_cache/
 graphify-out/
+
+# Full native screenshot review matrix; curated captures live in docs/screenshots.
+.impeccable/review/

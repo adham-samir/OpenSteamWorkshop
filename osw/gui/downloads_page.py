@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -37,23 +38,29 @@ class DownloadsPage(QWidget):
         head = QHBoxLayout()
         title_box = QVBoxLayout()
         title = QLabel("Downloads")
-        title.setStyleSheet("font-size: 19px; font-weight: 650;")
-        self.subheader = QLabel("One SteamCMD job at a time — remainder waits in queue.")
+        title.setStyleSheet("font-size: 23px; font-weight: 650;")
+        self.subheader = QLabel("")
+        self.subheader.setWordWrap(True)
         self.subheader.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12.5px;")
         title_box.addWidget(title)
         title_box.addWidget(self.subheader)
         head.addLayout(title_box, 1)
         self.resume_btn = QPushButton("Resume interrupted")
         self.resume_btn.clicked.connect(lambda: self.page_action.emit("resume"))
-        head.addWidget(self.resume_btn)
+
         self.retry_btn = QPushButton("Retry failed")
         self.retry_btn.clicked.connect(lambda: self.page_action.emit("retry"))
-        head.addWidget(self.retry_btn)
+
         self.clear_btn = QPushButton("Clear finished")
         self.clear_btn.setEnabled(False)
         self.clear_btn.clicked.connect(lambda: self.page_action.emit("clear"))
-        head.addWidget(self.clear_btn)
+
         v.addLayout(head)
+        page_actions = QHBoxLayout()
+        for button in (self.resume_btn, self.retry_btn, self.clear_btn):
+            page_actions.addWidget(button)
+        page_actions.addStretch(1)
+        v.addLayout(page_actions)
 
         filters = QHBoxLayout()
         filters.setSpacing(6)
@@ -66,7 +73,7 @@ class DownloadsPage(QWidget):
         ):
             btn = QPushButton(label)
             btn.setCheckable(True)
-            btn.setFixedHeight(27)
+            btn.setFixedHeight(36)
             btn.setAccessibleName(f"{label} downloads")
             btn.clicked.connect(lambda _=False, f=filt: self.set_filter(filt=f))
             self._filters[btn] = filt
@@ -81,7 +88,7 @@ class DownloadsPage(QWidget):
         self.table.setItemDelegate(self.delegate)
         self.table.setShowGrid(False)
         self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(62)
+        self.table.verticalHeader().setDefaultSectionSize(94)
         self.table.verticalHeader().setMinimumSectionSize(62)
         self.table.setWordWrap(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -92,15 +99,18 @@ class DownloadsPage(QWidget):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(0, 320)
-        self.table.setColumnWidth(3, 190)
-        self.table.setColumnWidth(4, 230)
+        self.table.setColumnWidth(0, 200)
+        self.table.setColumnWidth(3, 100)
+        self.table.setColumnWidth(4, 170)
+        self.table.horizontalHeader().hide()
+        self.table.verticalHeader().setDefaultSectionSize(94)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setCornerButtonEnabled(False)
         self.table.setAccessibleName("Download queue")
 
         self.empty_state = QLabel(
             "<b>No downloads yet.</b><br>"
-            "Import Workshop links in the Imports workspace to queue the first download."
+            "Find a game in Games or use Import links to queue your first download."
         )
         self.empty_state.setStyleSheet(f"color: {theme.TEXT2}; font-size: 13px;")
         self.empty_state.setWordWrap(True)
@@ -127,6 +137,7 @@ class DownloadsPage(QWidget):
         ab.setContentsMargins(0, 2, 0, 0)
         ab.setSpacing(8)
         self.sel_label = QLabel("")
+        self.sel_label.setMaximumWidth(190)
         self.sel_label.setStyleSheet(f"color: {theme.TEXT2};")
         ab.addWidget(self.sel_label)
         ab.addStretch(1)
@@ -188,12 +199,19 @@ class DownloadsPage(QWidget):
             n = counts.get(filt, 0)
             btn.setText(f"{label}  {n}")
         self.clear_btn.setEnabled(counts.get(JobFilter.FINISHED, 0) > 0)
+        from ..queue import JobState
+        snapshots = list(self.model._snapshots.values())
+        self.resume_btn.setEnabled(any(s.state is JobState.INTERRUPTED for s in snapshots))
+        self.retry_btn.setEnabled(any(s.state is JobState.FAILED for s in snapshots))
 
     def set_filter(self, *, filt: int) -> None:
         self.model.set_filter(filt)
         for btn, value in self._filters.items():
             btn.setChecked(value == filt)
         self._sync_spans()
+        if hasattr(self, "_stack"):
+            self._sync_empty()
+            self.update_actions()
         self.filter_changed.emit(filt)
 
     # ------------------------------------------------- selected-row bar
@@ -203,34 +221,57 @@ class DownloadsPage(QWidget):
         self.update_actions(current)
 
     def update_actions(self, index=None) -> None:
+        from .item_models import actions_for
+
+        snap = self.model.snapshot(index.row()) if index is not None and index.isValid() else None
+        labels = tuple(actions_for(snap)) if snap else ()
+        key = (snap.id, labels) if snap else None
+        self.sel_label.setText(
+            self.fontMetrics().elidedText(snap.title, Qt.TextElideMode.ElideRight, 180)
+            if snap else "Select a row to act on it…"
+        )
+        if hasattr(self, "_actions_key") and self._actions_key == key:
+            return
+        self._actions_key = key
+        focused = QApplication.focusWidget()
+        focus_label = focused.text() if focused in self.action_buttons else None
         bar = self.action_bar.layout()
         for button in list(self.action_buttons):
             bar.removeWidget(button)
+            button.hide()
             button.deleteLater()
         self.action_buttons.clear()
-
-        snap = self.model.snapshot(index.row()) if index is not None and index.isValid() else None
-        if snap is None:
-            self.sel_label.setText("Select a row to act on it…")
-        else:
-            self.sel_label.setText(f"{snap.title} —")
-            from .item_models import actions_for
-
-            for label in actions_for(snap):
-                btn = QPushButton(label)
-                btn.setAccessibleName(f"{label} {snap.title}")
-                btn.clicked.connect(
-                    lambda _=False, jid=snap.id, act=label: self.action_requested.emit(jid, act)
-                )
-                if label == "Cancel":
-                    btn.setStyleSheet(f"QPushButton {{ color: {theme.BAD}; }}")
-                elif label in ("Retry", "Resume", "Retry with account"):
-                    btn.setStyleSheet(f"QPushButton {{ color: {theme.ACCENT}; }}")
-                bar.addWidget(btn)
-                self.action_buttons.append(btn)
+        for label in labels:
+            btn = QPushButton(label)
+            btn.setAccessibleName(f"{label} {snap.title}")
+            btn.clicked.connect(
+                lambda _=False, jid=snap.id, act=label: self.action_requested.emit(jid, act)
+            )
+            if label == "Cancel":
+                btn.setStyleSheet(f"QPushButton {{ color: {theme.BAD}; }}")
+            elif label in ("Retry", "Resume", "Retry with account"):
+                btn.setStyleSheet(f"QPushButton {{ color: {theme.ACCENT}; }}")
+            bar.addWidget(btn)
+            self.action_buttons.append(btn)
+        if focus_label and self.action_buttons:
+            target = next((button for button in self.action_buttons if button.text() == focus_label),
+                          self.action_buttons[0])
+            target.setFocus()
+        elif focus_label:
+            self.table.setFocus()
 
     # ------------------------------------------------------------ empty
 
     def _sync_empty(self) -> None:
         empty = self.model.rowCount() == 0
         self._stack.setCurrentIndex(1 if empty else 0)
+        if self.model._snapshots:
+            self.empty_state.setText("No downloads match this filter.")
+        else:
+            self.empty_state.setText("<b>No downloads yet.</b><br>Find a game or import Workshop links to get started.")
+
+    def set_concurrency(self, count):
+        self.subheader.setText(
+            f"Up to {count} games downloading at once · items for each game run one at a time."
+            if count > 1 else "One download at a time · change concurrency in Settings."
+        )

@@ -4,27 +4,26 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, QModelIndex, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
+from . import icons, theme
 from .item_models import (
     FavoriteRole,
     GameRole,
     JobState,
     MetaRole,
-    RatingRole,
     SnapshotRole,
-    TagListRole,
     ThumbRole,
     _state_label,
     actions_for,
 )
 
-ACCENT = "#46B4E6"
-CARD_W, CARD_H = 192, 258
+ACCENT = theme.ACCENT
+CARD_W, CARD_H = 244, 238
 GAME_W, GAME_H = 300, 64
 GAP = 6
 BUTTON_PAD_X = 11
-BUTTON_H = 25
+BUTTON_H = 30
 BUTTON_GAP = 6
 
 
@@ -38,97 +37,112 @@ def _fill_round(painter: QPainter, rect: QRectF, color: str, radius: float) -> N
     painter.fillPath(_card_path(rect, radius), QColor(color))
 
 
+def _art(painter, rect, image, label="No preview"):
+    painter.save()
+    painter.setClipPath(_card_path(rect, 8))
+    painter.fillRect(rect, QColor(theme.RAISED))
+    if image is not None and not image.isNull():
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        ratio = max(rect.width()/image.width(), rect.height()/image.height())
+        sw, sh = rect.width()/ratio, rect.height()/ratio
+        source = QRectF((image.width()-sw)/2, (image.height()-sh)/2, sw, sh)
+        painter.drawImage(rect, image, source)
+    else:
+        icons.paint(painter, QRectF(rect.center().x()-12, rect.center().y()-24, 24, 24),
+                    "browse", theme.TEXT2)
+        painter.setPen(QColor(theme.TEXT2))
+        painter.drawText(rect.adjusted(4, 26, -4, -4), Qt.AlignmentFlag.AlignCenter, label)
+    painter.restore()
+
+
+def _text(painter, rect, text, *, size=10, bold=False, color=None):
+    font = QFont(QApplication.font())
+    font.setPointSizeF(size)
+    font.setWeight(QFont.Weight.DemiBold if bold else QFont.Weight.Normal)
+    painter.setFont(font)
+    painter.setPen(QColor(color or theme.TEXT))
+    painter.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextSingleLine,
+                     QFontMetrics(font).elidedText(str(text), Qt.TextElideMode.ElideRight,
+                                                  max(0, int(rect.width()))))
+
+
 class ItemCardDelegate(QStyledItemDelegate):
-    """Workshop card: cover art, two-line title, mono meta, rating, tag chips."""
-
+    """Landscape artwork with a readable title and concise metadata."""
     def sizeHint(self, option, index):
-        return QSize(CARD_W, CARD_H)
+        view = self.parent()
+        width = view.viewport().width() if view else CARD_W
+        columns = max(1, (width - 12) // (CARD_W + 16))
+        cell = max(210, (width - 16 * (columns + 1)) // columns)
+        return QSize(cell, int(cell * .56) + 102)
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+    def paint(self, painter, option, index):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(option.rect)
-        selected = bool(option.state & QStyle.StateFlag.State_Selected)
-
-        _fill_round(painter, rect, "#171C22", 9.0)
-        if selected:
-            painter.setPen(QColor(ACCENT))
+        r = QRectF(option.rect).adjusted(1, 1, -1, -1)
+        _fill_round(painter, r, theme.SURFACE, 10)
+        image_rect = QRectF(r.x(), r.y(), r.width(), r.width() * .56)
+        _art(painter, image_rect, index.data(ThumbRole))
+        body = QRectF(r.x()+12, image_rect.bottom()+10, r.width()-24, 22)
+        # Two deliberate lines, with the second elided for long titles.
+        title = index.data() or "Untitled Workshop item"
+        font = QFont(QApplication.font())
+        font.setPointSizeF(10.5)
+        font.setWeight(QFont.Weight.DemiBold)
+        fm = QFontMetrics(font)
+        words = title.split()
+        line = ""
+        while words and fm.horizontalAdvance((line + " " + words[0]).strip()) <= body.width():
+            line = (line + " " + words.pop(0)).strip()
+        if not line and words:
+            line = words.pop(0)
+        _text(painter, body, line, size=10.5, bold=True)
+        _text(painter, body.translated(0, 21), " ".join(words), size=10.5, bold=True)
+        _text(painter, QRectF(body.x(), r.bottom()-31, body.width(), 20),
+              index.data(MetaRole) or "Workshop content", size=9, color=theme.TEXT2)
+        if option.state & (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_HasFocus):
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPath(_card_path(rect.adjusted(0.5, 0.5, -0.5, -0.5), 9.0))
+            painter.setPen(QColor(theme.ACCENT))
+            painter.drawRoundedRect(r, 10, 10)
+        painter.restore()
 
-        body = rect.adjusted(10, 0, -10, -9)
-        thumb_h = 118.0
-        thumb = QRectF(rect.x(), rect.y(), rect.width(), thumb_h)
-        img = index.data(ThumbRole)
 
+class ItemListDelegate(QStyledItemDelegate):
+    """The same item model and selection, presented as compact rows."""
+    def sizeHint(self, option, index):
+        return QSize(220, 82)
+
+    def paint(self, painter, option, index):
         painter.save()
-        painter.setClipPath(_card_path(thumb.adjusted(1, 1, -1, -1), 8.2))
-        if img is not None and not img.isNull():
-            scaled = img.scaled(
-                int(thumb.width()), int(thumb.height()),
-                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            painter.drawImage(
-                QRectF(
-                    thumb.center().x() - scaled.width() / 2,
-                    thumb.center().y() - scaled.height() / 2,
-                    scaled.width(), scaled.height(),
-                ),
-                scaled,
-            )
-        else:
-            painter.fillRect(thumb, QColor("#141A20"))
-
-        # template frame so card geometry never depends on art
-        painter.setPen(QColor("#232B34"))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(thumb.adjusted(1, 1, -2, -2), 8.2, 8.2)
+        r = QRectF(option.rect).adjusted(1, 2, -1, -2)
+        selected = option.state & (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_HasFocus)
+        _fill_round(painter, r, theme.ACCENT_DIM if selected else theme.SURFACE, 8)
+        _art(painter, QRectF(r.x()+8, r.y()+8, 98, r.height()-16), index.data(ThumbRole), "Preview")
+        _text(painter, QRectF(r.x()+120, r.y()+12, r.width()-134, 26), index.data() or "", bold=True)
+        _text(painter, QRectF(r.x()+120, r.y()+40, r.width()-134, 22),
+              index.data(MetaRole) or "", size=9, color=theme.TEXT2)
+        if selected:
+            painter.setPen(QColor(theme.ACCENT))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(r, 8, 8)
         painter.restore()
 
-        title_rect = QRectF(body.x(), thumb.bottom() + 8, body.width(), 30)
-        painter.setPen(QColor("#F3F6F8"))
-        painter.drawText(title_rect, Qt.TextFlag.TextWordWrap, index.data() or "", )
 
-        meta_y = title_rect.bottom() + 4
-        font = QFont()
-        font.setPointSizeF(8.2)
-        painter.setFont(font)
-        rating = index.data(RatingRole)
-        meta = index.data(MetaRole) or ""
-        painter.setPen(QColor("#98A3AF"))
-        if rating:
-            painter.drawText(
-                QRectF(body.x(), meta_y, body.width() - 42, 14), Qt.AlignmentFlag.AlignLeft, meta
-            )
-            painter.setPen(QColor("#4EC98A"))
-            painter.drawText(
-                QRectF(body.right() - 42, meta_y, 42, 14),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"★ {rating}",
-            )
-        else:
-            painter.drawText(QRectF(body.x(), meta_y, body.width(), 14), Qt.AlignmentFlag.AlignLeft, meta)
+class GameCardDelegate(QStyledItemDelegate):
+    def sizeHint(self, option, index):
+        return QSize(232, 164)
 
-        tags = index.data(TagListRole) or []
-        if tags:
-            font.setPointSizeF(8.0)
-            painter.setFont(font)
-            metrics = QFontMetrics(font)
-            cursor = body.x()
-            for label in tags[:2]:
-                w = metrics.horizontalAdvance(label) + 10
-                if cursor + w > body.right() + 0.5:
-                    break
-                chip = QRectF(cursor, body.bottom() - 18, w, 15)
-                painter.fillPath(_card_path(chip, 4.0), QColor("#232B34"))
-                painter.setPen(QColor("#98A3AF"))
-                painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, label)
-                cursor += w + GAP
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        r = QRectF(option.rect).adjusted(1, 1, -1, -1)
+        _fill_round(painter, r, theme.SURFACE, 9)
+        _art(painter, QRectF(r.x(), r.y(), r.width(), 115), index.data(ThumbRole), "Game artwork")
+        _text(painter, QRectF(r.x()+12, r.y()+122, r.width()-24, 28), index.data() or "", bold=True)
+        if option.state & (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_HasFocus):
+            painter.setPen(QColor(theme.ACCENT))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(r, 9, 9)
         painter.restore()
-
-    def helpEvent(self, *args) -> bool:  # detail level comes from the inspector, not tooltips
-        return False
 
 
 class GameResultDelegate(QStyledItemDelegate):
@@ -144,7 +158,7 @@ class GameResultDelegate(QStyledItemDelegate):
             QStyle.StateFlag.State_MouseOver | QStyle.StateFlag.State_Selected
         )
         if state:
-            _fill_round(painter, rect.adjusted(2, 1, -2, -1), "#1F2630", 8.0)
+            _fill_round(painter, rect.adjusted(2, 1, -2, -1), theme.RAISED, 8.0)
         img = index.data(ThumbRole)
         cap = QRectF(rect.x() + 6, rect.y() + 5, 128, GAME_H - 10)
         scaled = None
@@ -172,11 +186,11 @@ class GameResultDelegate(QStyledItemDelegate):
         text_x = cap.right() + 12
         favorite = bool(index.data(FavoriteRole))
         text_right = rect.right() - (28 if favorite else 0)
-        font = QFont()
+        font = QFont(QApplication.font())
         font.setPointSizeF(9.8)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
-        painter.setPen(QColor("#F3F6F8"))
+        painter.setPen(QColor(theme.TEXT))
         painter.drawText(
             QRectF(text_x, rect.y() + 10, text_right - text_x, 20),
             Qt.TextFlag.TextSingleLine,
@@ -184,7 +198,7 @@ class GameResultDelegate(QStyledItemDelegate):
         )
         font.setPointSizeF(8.4)
         painter.setFont(font)
-        painter.setPen(QColor("#98A3AF"))
+        painter.setPen(QColor(theme.TEXT2))
         game = index.data(GameRole)
         painter.drawText(
             QRectF(text_x, rect.y() + 31, text_right - text_x, 14),
@@ -209,12 +223,12 @@ class JobRowDelegate(QStyledItemDelegate):
         self._on_action = on_action
 
     STATE_COLORS = {
-        JobState.QUEUED: "#98A3AF",
+        JobState.QUEUED: theme.TEXT2,
         JobState.RUNNING: ACCENT,
         JobState.WAITING_FOR_AUTH: "#E8B84D",
         JobState.DONE: "#4EC98A",
         JobState.FAILED: "#E5605C",
-        JobState.CANCELLED: "#98A3AF",
+        JobState.CANCELLED: theme.TEXT2,
         JobState.INTERRUPTED: "#E8B84D",
     }
 
@@ -223,87 +237,37 @@ class JobRowDelegate(QStyledItemDelegate):
 
     @staticmethod
     def _chip_color(snap) -> str:
-        return JobRowDelegate.STATE_COLORS.get(snap.state, "#98A3AF")
+        return JobRowDelegate.STATE_COLORS.get(snap.state, theme.TEXT2)
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+    def paint(self, painter, option, index):
         snap = index.data(SnapshotRole)
         if snap is None:
             return
         painter.save()
-        rect = QRectF(option.rect)
-
-        live_job = snap.state is JobState.RUNNING
-        if live_job:
-            painter.fillRect(rect, QColor("rgba(70, 180, 230, 16)"))
-        # state dot
-        dot = QColor(self._chip_color(snap))
+        r = QRectF(option.rect)
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(r, QColor(theme.ACCENT_DIM))
+        color = self._chip_color(snap)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(dot)
-        painter.drawEllipse(QRectF(rect.x() + 12, rect.y() + 13, 7, 7))
-
-        # job cell
-        font = QFont()
-        font.setPointSizeF(9.6)
-        font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(font)
-        painter.setPen(QColor("#F3F6F8"))
-        job_x = rect.x() + 28
-        title_w = 230
-        title_font = QFontMetrics(font)
-        painter.drawText(
-            QRect(job_x, rect.y() + 9, title_w, 18), Qt.TextFlag.TextSingleLine,
-            title_font.elidedText(snap.title, Qt.TextElideMode.ElideRight, title_w),
-        )
-        font.setPointSizeF(8.3)
-        font.setWeight(QFont.Weight.Normal)
-        painter.setFont(font)
-        painter.setPen(QColor("#7C8794"))
-        painter.drawText(
-            QRect(job_x, rect.y() + 29, title_w + 70, 14), Qt.TextFlag.TextSingleLine,
-            f"{snap.app_name or '—'} · {snap.fileid}",
-        )
-
-        # status chip + progress bar
-        chip_x = job_x + title_w + 80
-        chip_rect = QRectF(chip_x, rect.y() + 10, 140, 20)
+        painter.setBrush(QColor(color))
+        painter.drawEllipse(QRectF(r.x()+10, r.y()+16, 7, 7))
+        _text(painter, QRectF(r.x()+28, r.y()+6, r.width()-210, 25), snap.title, bold=True)
         label = _state_label(snap.state, snap.progress, snap.output_path)
-        font.setPointSizeF(8.4)
-        font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(font)
-        painter.setPen(dot)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(chip_rect, 5, 5)
-        painter.drawText(chip_rect.adjusted(9, 0, -4, 0), Qt.AlignmentFlag.AlignVCenter, label)
-
-        if live_job or (snap.state is JobState.QUEUED and False):
-            bar_rect = QRectF(chip_x, rect.y() + 36, 140, 5)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.fillPath(_card_path(bar_rect, 2.0), QColor("#1F2630"))
-            fill = max(1, int(bar_rect.width() * max(0.02, min(1.0, snap.progress / 100))))
-            painter.fillPath(_card_path(QRectF(bar_rect.x(), bar_rect.y(), fill, 5), 2.0), dot)
-
-        # actions
-        acts = actions_for(snap)
-        if acts:
-            font.setPointSizeF(8.6)
-            font.setWeight(QFont.Weight.DemiBold)
-            painter.setFont(font)
-            metrics = QFontMetrics(font)
-            cur_x = rect.right() - 8
-            for label in reversed(acts):
-                w = metrics.horizontalAdvance(label) + BUTTON_PAD_X * 2
-                btn = QRectF(
-                    cur_x - w, rect.y() + (rect.height() - BUTTON_H) / 2, w, BUTTON_H
-                )
-                fg = "#F3F6F8"
-                if label == "Cancel":
-                    fg = "#E5605C"
-                if label in ("Retry", "Resume", "Retry with account"):
-                    fg = ACCENT
-                painter.fillPath(_card_path(btn, 6.0), QColor("#1F2630"))
-                painter.setPen(QColor(fg))
-                painter.drawText(btn, Qt.AlignmentFlag.AlignCenter, label)
-                cur_x -= w + BUTTON_GAP
+        _text(painter, QRectF(r.right()-170, r.y()+6, 160, 25), label, size=9, color=color)
+        _text(painter, QRectF(r.x()+28, r.y()+31, r.width()-210, 21),
+              f"{snap.app_name or f'App {snap.appid}'} · {snap.fileid}", size=9, color=theme.TEXT2)
+        if snap.state is JobState.RUNNING:
+            bar = QRectF(r.right()-170, r.y()+38, 150, 4)
+            painter.fillRect(bar, QColor(theme.RAISED))
+            painter.fillRect(QRectF(bar.x(), bar.y(), bar.width()*max(0.02, min(1, snap.progress/100)), 4), QColor(theme.ACCENT))
+        rects = self.action_rects(option.rect, index)
+        right = rects[0][1].left()-10 if rects else r.right()-10
+        _text(painter, QRectF(r.x()+28, r.y()+59, max(0, right-r.x()-28), 24),
+              snap.message or "", size=9, color=theme.TEXT2)
+        for label, rect in rects:
+            _fill_round(painter, QRectF(rect), theme.RAISED, 5)
+            _text(painter, QRectF(rect).adjusted(8, 0, -5, 0), label, size=8.6,
+                  color=theme.BAD if label == "Cancel" else theme.TEXT)
         painter.restore()
 
     def action_rects(self, rect: QRect, index: QModelIndex):
@@ -314,7 +278,7 @@ class JobRowDelegate(QStyledItemDelegate):
         acts = actions_for(snap)
         if not acts:
             return []
-        font = QFont()
+        font = QFont(QApplication.font())
         font.setPointSizeF(8.6)
         metrics = QFontMetrics(font)
         rects = []
@@ -322,7 +286,7 @@ class JobRowDelegate(QStyledItemDelegate):
         for label in reversed(acts):
             w = metrics.horizontalAdvance(label) + BUTTON_PAD_X * 2
             rects.append(
-                (label, QRect(cur_x - w, rect.y() + (rect.height() - BUTTON_H) // 2, w, BUTTON_H))
+                (label, QRect(cur_x - w, rect.bottom() - BUTTON_H - 6, w, BUTTON_H))
             )
             cur_x -= w + BUTTON_GAP
         rects.reverse()

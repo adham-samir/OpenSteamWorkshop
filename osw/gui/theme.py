@@ -8,22 +8,22 @@ from PySide6.QtCore import QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QApplication
 
-BG = "#101317"
-SURFACE = "#171C22"
-RAISED = "#1F2630"
-BORDER = "#2E3742"
-TEXT = "#F3F6F8"
-TEXT2 = "#98A3AF"
-ACCENT = "#46B4E6"
-ACCENT_STRONG = "#6BC9F2"
-ACCENT_TEXT = "#07141C"
+BG = "#141619"
+SURFACE = "#1C1F24"
+RAISED = "#262A31"
+BORDER = "#353B45"
+TEXT = "#F1F3F5"
+TEXT2 = "#A7AFBC"
+ACCENT = "#78ABFF"
+ACCENT_STRONG = "#98BFFF"
+ACCENT_TEXT = "#101D34"
 OK = "#4EC98A"
 WARN = "#E8B84D"
 BAD = "#E5605C"
 
 # Short aliases used by components; keep one source of truth for the palette.
 ACCENT_INK = ACCENT_TEXT
-ACCENT_DIM = "#173646"
+ACCENT_DIM = "#253752"
 AMBER = WARN
 GREEN = OK
 RED = BAD
@@ -33,6 +33,7 @@ RAIL = SURFACE
 MONO_CSS = "'JetBrains Mono','Cascadia Code',Menlo,Consolas,monospace"
 
 _ICONS = Path(__file__).resolve().parent / "icons"
+CHEVRON_URL = (_ICONS / "chevron-down.svg").as_posix()
 CHECK_URL = (_ICONS / "check.svg").as_posix()
 
 
@@ -84,13 +85,14 @@ QFrame#Card {{ background: transparent; }}
 /* --------------------------------------------------------------- controls */
 QPushButton {{
     background: {RAISED}; border: 1px solid {BORDER}; border-radius: 7px;
-    padding: 5px 13px; font-weight: 550; min-height: 22px;
+    padding: 5px 13px; font-weight: 550; min-height: 26px;
 }}
 QPushButton:hover {{ border-color: {ACCENT}; }}
+QPushButton:checked {{ border-color: {ACCENT}; background: {ACCENT_DIM}; }}
 QPushButton:pressed {{ background: {BORDER}; }}
 QPushButton:focus {{ border-color: {ACCENT}; }}
 QPushButton:disabled {{ color: {TEXT2}; border-color: {BORDER}; background: {SURFACE}; }}
-QPushButton[role="primary"] {{
+QPushButton[accent="true"], QPushButton[role="primary"] {{
     background: {ACCENT}; color: {ACCENT_TEXT}; border-color: {ACCENT};
 }}
 QPushButton[role="primary"]:hover {{ background: {ACCENT_STRONG}; border-color: {ACCENT_STRONG}; }}
@@ -128,16 +130,14 @@ QToolButton {{ background: transparent; border: 1px solid transparent; border-ra
 QToolButton:hover {{ background: {RAISED}; border-color: {BORDER}; }}
 QToolButton[role="icon"] {{ padding: 4px; }}
 
-QLineEdit, QPlainTextEdit, QComboBox {{
-    background: {RAISED}; border: 1px solid {BORDER}; border-radius: 7px; padding: 5px 9px;
+QSpinBox, QLineEdit, QPlainTextEdit, QComboBox {{
+    background: {RAISED}; border: 1px solid {BORDER}; border-radius: 7px; padding: 8px 10px;
     selection-background-color: {ACCENT}; selection-color: {ACCENT_TEXT};
 }}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {{ border-color: {ACCENT}; }}
 QLineEdit:hover, QPlainTextEdit:hover, QComboBox:hover {{ border-color: #3C4653; }}
 QComboBox::drop-down {{ border: none; width: 22px; }}
-QComboBox::down-arrow {{
-    image: none; border-left: 4px solid transparent; border-right: 4px solid transparent;
-    border-top: 5px solid {TEXT2}; margin: 0 8px 0 0;
-}}
+QComboBox::down-arrow {{ image: url({CHEVRON_URL}); width: 12px; height: 12px; margin-right: 6px; }}
 QComboBox QAbstractItemView {{
     background: {RAISED}; border: 1px solid {BORDER}; selection-background-color: {ACCENT};
     selection-color: {ACCENT_TEXT};
@@ -210,13 +210,14 @@ QMessageBox, QInputDialog QLabel {{ color: {TEXT}; }}
 QDialogButtonBox QPushButton {{ min-width: 74px; }}
 
 /* --------------------------------------------------------- named regions */
-QWidget#sidebarFrame {{ background: {RAIL}; border-right: 1px solid {BORDER}; }}
+QFrame#NavRail, QWidget#sidebarFrame {{ background: {RAIL}; border-right: 1px solid {BORDER}; }}
+QFrame#NavRail QWidget {{ background: transparent; }}
 QLabel#brandName {{ font-size: 12px; font-weight: 650; color: {TEXT}; }}
 QLabel#brandSub {{ font-size: 9px; font-weight: 650; color: {TEXT2}; letter-spacing: 1.4px; }}
 QLabel#navCaption {{ color: {TEXT2}; font-size: 9.5px; font-weight: 650; letter-spacing: 1.2px; }}
 QFrame#sidebarRule {{ background: {BORDER}; border: none; max-height: 1px; }}
 QLabel#railVersion {{ color: #66717D; font-size: 10px; }}
-QFrame#statusStrip {{
+QFrame#StatusStrip, QFrame#statusStrip {{
     background: {SURFACE}; border-top: 1px solid {BORDER}; border-left: none;
     border-right: none; border-bottom: none;
 }}

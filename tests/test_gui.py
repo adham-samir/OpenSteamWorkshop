@@ -318,7 +318,7 @@ def test_sidebar_collapses_to_icon_rail_and_restores(window, qapp):
     qapp.processEvents()
     assert not window.sidebar.is_collapsed()
     assert window.sidebar.width() == 208
-    assert window.sidebar.buttons["browse"].text() == "Browse"
+    assert window.sidebar.buttons["browse"].text() == "Browse mods"
 
 
 def test_navigation_and_status_strip_open_downloads(window):
@@ -1436,6 +1436,7 @@ def test_window_cleanup_deletes_selected_copy_and_rescans(
 
     _items, groups = scan_installed_all(root, game_paths={4000: game_mods})
     window._duplicate_groups = groups
+    window.library.show_items(_items, root)
     rescanned = []
     window._scan_library = lambda: rescanned.append(True)
 

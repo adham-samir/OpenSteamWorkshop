@@ -1,0 +1,334 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T16:50:06.415648Z",
+  "title": "Design System: OpenSteamWorkshop",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Window Charcoal",
+        "tonalRamp": [
+          "oklch(15% 0.0068 258.37)",
+          "oklch(26% 0.0068 258.37)",
+          "oklch(38% 0.0068 258.37)",
+          "oklch(49% 0.0068 258.37)",
+          "oklch(61% 0.0068 258.37)",
+          "oklch(72% 0.0068 258.37)",
+          "oklch(84% 0.0068 258.37)",
+          "oklch(95% 0.0068 258.37)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Panel Charcoal",
+        "tonalRamp": [
+          "oklch(15% 0.0106 260.69)",
+          "oklch(26% 0.0106 260.69)",
+          "oklch(38% 0.0106 260.69)",
+          "oklch(49% 0.0106 260.69)",
+          "oklch(61% 0.0106 260.69)",
+          "oklch(72% 0.0106 260.69)",
+          "oklch(84% 0.0106 260.69)",
+          "oklch(95% 0.0106 260.69)"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Control Charcoal",
+        "tonalRamp": [
+          "oklch(15% 0.0141 261.69)",
+          "oklch(26% 0.0141 261.69)",
+          "oklch(38% 0.0141 261.69)",
+          "oklch(49% 0.0141 261.69)",
+          "oklch(61% 0.0141 261.69)",
+          "oklch(72% 0.0141 261.69)",
+          "oklch(84% 0.0141 261.69)",
+          "oklch(95% 0.0141 261.69)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Slate Edge",
+        "tonalRamp": [
+          "oklch(15% 0.0193 260.66)",
+          "oklch(26% 0.0193 260.66)",
+          "oklch(38% 0.0193 260.66)",
+          "oklch(49% 0.0193 260.66)",
+          "oklch(61% 0.0193 260.66)",
+          "oklch(72% 0.0193 260.66)",
+          "oklch(84% 0.0193 260.66)",
+          "oklch(95% 0.0193 260.66)"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Soft White",
+        "tonalRamp": [
+          "oklch(15% 0.0034 247.86)",
+          "oklch(26% 0.0034 247.86)",
+          "oklch(38% 0.0034 247.86)",
+          "oklch(49% 0.0034 247.86)",
+          "oklch(61% 0.0034 247.86)",
+          "oklch(72% 0.0034 247.86)",
+          "oklch(84% 0.0034 247.86)",
+          "oklch(95% 0.0034 247.86)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Cool Grey",
+        "tonalRamp": [
+          "oklch(15% 0.0207 260.17)",
+          "oklch(26% 0.0207 260.17)",
+          "oklch(38% 0.0207 260.17)",
+          "oklch(49% 0.0207 260.17)",
+          "oklch(61% 0.0207 260.17)",
+          "oklch(72% 0.0207 260.17)",
+          "oklch(84% 0.0207 260.17)",
+          "oklch(95% 0.0207 260.17)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Workshop Blue",
+        "tonalRamp": [
+          "oklch(15% 0.1340 259.99)",
+          "oklch(26% 0.1340 259.99)",
+          "oklch(38% 0.1340 259.99)",
+          "oklch(49% 0.1340 259.99)",
+          "oklch(61% 0.1340 259.99)",
+          "oklch(72% 0.1340 259.99)",
+          "oklch(84% 0.1340 259.99)",
+          "oklch(95% 0.1340 259.99)"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Open Blue",
+        "tonalRamp": [
+          "oklch(15% 0.1007 260.11)",
+          "oklch(26% 0.1007 260.11)",
+          "oklch(38% 0.1007 260.11)",
+          "oklch(49% 0.1007 260.11)",
+          "oklch(61% 0.1007 260.11)",
+          "oklch(72% 0.1007 260.11)",
+          "oklch(84% 0.1007 260.11)",
+          "oklch(95% 0.1007 260.11)"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Blue Ink",
+        "tonalRamp": [
+          "oklch(15% 0.0483 261.10)",
+          "oklch(26% 0.0483 261.10)",
+          "oklch(38% 0.0483 261.10)",
+          "oklch(49% 0.0483 261.10)",
+          "oklch(61% 0.0483 261.10)",
+          "oklch(72% 0.0483 261.10)",
+          "oklch(84% 0.0483 261.10)",
+          "oklch(95% 0.0483 261.10)"
+        ]
+      },
+      "accent-dim": {
+        "role": "primary",
+        "displayName": "Quiet Blue",
+        "tonalRamp": [
+          "oklch(15% 0.0535 258.28)",
+          "oklch(26% 0.0535 258.28)",
+          "oklch(38% 0.0535 258.28)",
+          "oklch(49% 0.0535 258.28)",
+          "oklch(61% 0.0535 258.28)",
+          "oklch(72% 0.0535 258.28)",
+          "oklch(84% 0.0535 258.28)",
+          "oklch(95% 0.0535 258.28)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "tonalRamp": [
+          "oklch(15% 0.1434 157.62)",
+          "oklch(26% 0.1434 157.62)",
+          "oklch(38% 0.1434 157.62)",
+          "oklch(49% 0.1434 157.62)",
+          "oklch(61% 0.1434 157.62)",
+          "oklch(72% 0.1434 157.62)",
+          "oklch(84% 0.1434 157.62)",
+          "oklch(95% 0.1434 157.62)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Attention Amber",
+        "tonalRamp": [
+          "oklch(15% 0.1344 84.44)",
+          "oklch(26% 0.1344 84.44)",
+          "oklch(38% 0.1344 84.44)",
+          "oklch(49% 0.1344 84.44)",
+          "oklch(61% 0.1344 84.44)",
+          "oklch(72% 0.1344 84.44)",
+          "oklch(84% 0.1344 84.44)",
+          "oklch(95% 0.1344 84.44)"
+        ]
+      },
+      "error": {
+        "role": "semantic",
+        "displayName": "Failure Red",
+        "tonalRamp": [
+          "oklch(15% 0.1667 24.50)",
+          "oklch(26% 0.1667 24.50)",
+          "oklch(38% 0.1667 24.50)",
+          "oklch(49% 0.1667 24.50)",
+          "oklch(61% 0.1667 24.50)",
+          "oklch(72% 0.1667 24.50)",
+          "oklch(84% 0.1667 24.50)",
+          "oklch(95% 0.1667 24.50)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Page heading",
+        "purpose": "Identify the current workspace or game."
+      },
+      "title": {
+        "displayName": "Section heading",
+        "purpose": "Group related content."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "General Qt widget text using the system UI font."
+      },
+      "label": {
+        "displayName": "Secondary label",
+        "purpose": "Muted metadata and supporting labels."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Short supporting captions."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "minimum-width",
+        "value": "960px"
+      },
+      {
+        "name": "narrow-status-strip",
+        "value": "1080px"
+      },
+      {
+        "name": "expanded-navigation",
+        "value": "1120px"
+      },
+      {
+        "name": "adjacent-details",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Portable preview of the native Qt control; Qt source governs rendering.",
+      "html": "<button class=\"ds-primary\">Import links</button>",
+      "css": ".ds-primary{font:550 13px system-ui,sans-serif;border:1px solid #353B45;border-radius:7px;padding:5px 13px;min-height:38px;background:#78ABFF;color:#101D34;}.ds-primary:hover{border-color:#78ABFF;}.ds-primary:focus-visible{outline:2px solid #78ABFF;outline-offset:2px;}.ds-primary:active{background:#353B45;}.ds-primary:hover{background:#98BFFF;border-color:#98BFFF;}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Portable preview of the native Qt control; Qt source governs rendering.",
+      "html": "<button class=\"ds-secondary\">Check for updates</button>",
+      "css": ".ds-secondary{font:550 13px system-ui,sans-serif;border:1px solid #353B45;border-radius:7px;padding:5px 13px;min-height:38px;background:#262A31;color:#F1F3F5;}.ds-secondary:hover{border-color:#78ABFF;}.ds-secondary:focus-visible{outline:2px solid #78ABFF;outline-offset:2px;}.ds-secondary:active{background:#353B45;}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Portable preview of the native Qt control; Qt source governs rendering.",
+      "html": "<button class=\"ds-ghost\">Close</button>",
+      "css": ".ds-ghost{font:550 13px system-ui,sans-serif;border:1px solid #353B45;border-radius:7px;padding:5px 13px;min-height:38px;background:transparent;color:#F1F3F5;border-color:transparent;}.ds-ghost:hover{border-color:#78ABFF;}.ds-ghost:focus-visible{outline:2px solid #78ABFF;outline-offset:2px;}.ds-ghost:active{background:#353B45;}"
+    },
+    {
+      "name": "Destructive button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Portable preview of the native Qt control; Qt source governs rendering.",
+      "html": "<button class=\"ds-danger\">Delete</button>",
+      "css": ".ds-danger{font:550 13px system-ui,sans-serif;border:1px solid #353B45;border-radius:7px;padding:5px 13px;min-height:38px;background:transparent;color:#E5605C;border-color:#E5605C;}.ds-danger:hover{border-color:#78ABFF;}.ds-danger:focus-visible{outline:2px solid #78ABFF;outline-offset:2px;}.ds-danger:active{background:#353B45;}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Raised charcoal field with explicit focus treatment.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-search\">Search installed mods</label><input class=\"ds-search\" id=\"ds-search\" type=\"search\" placeholder=\"Search installed mods\">",
+      "css": ".ds-field-label{display:block;color:#F1F3F5;font:12px system-ui;margin-bottom:8px}.ds-search{font:13px system-ui;background:#262A31;color:#F1F3F5;border:1px solid #353B45;border-radius:7px;padding:8px 10px}.ds-search:hover{border-color:#3C4653}.ds-search:focus-visible{outline:none;border-color:#78ABFF}"
+    },
+    {
+      "name": "Navigation item",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Selected destination with monochrome icon; compact Qt rail retains accessible names.",
+      "html": "<button class=\"ds-nav\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5\"/></svg> Installed</button>",
+      "css": ".ds-nav{display:flex;gap:8px;align-items:center;font:550 13px system-ui;color:#F1F3F5;background:#253752;border:1px solid #24556C;border-radius:8px;padding:6px 10px;height:40px;width:188px;text-align:left}.ds-nav:hover{background:#253752}.ds-nav:focus-visible{outline:2px solid #78ABFF;outline-offset:2px}.ds-nav:active{border-color:#78ABFF}"
+    },
+    {
+      "name": "Filter chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Checked labelled filter with a blue boundary.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Needs attention</button>",
+      "css": ".ds-chip{font:12px system-ui;background:#253752;color:#F1F3F5;border:1px solid #78ABFF;border-radius:13px;padding:3px 11px;min-height:26px}.ds-chip:hover{border-color:#A7AFBC}.ds-chip:focus-visible{outline:2px solid #78ABFF;outline-offset:2px}.ds-chip:active{background:#353B45}"
+    },
+    {
+      "name": "Workshop card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Native card translated to a static HTML preview with a deliberate missing-art state.",
+      "html": "<button class=\"ds-card\"><span class=\"ds-art\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"m12 3 9 5v11l-9 2-9-2V8l9-5Zm-9 5 9 3 9-3M12 11v10\"/></svg><span>No preview</span></span><span class=\"ds-card-title\">Workshop item</span><span class=\"ds-card-meta\">Workshop content</span></button>",
+      "css": ".ds-card{display:block;width:244px;background:#1C1F24;color:#F1F3F5;border:1px solid transparent;border-radius:10px;padding:0;text-align:left;font:13px system-ui;overflow:hidden}.ds-art{height:136px;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;background:#262A31;color:#A7AFBC;border-radius:8px}.ds-card-title{display:block;padding:12px 12px 0;font-weight:600;min-height:42px}.ds-card-meta{display:block;padding:8px 12px 12px;color:#A7AFBC;font-size:12px}.ds-card:hover{border-color:#353B45}.ds-card:focus-visible{outline:none;border-color:#78ABFF}.ds-card:active{border-color:#78ABFF}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A game-focused Workshop workspace",
+    "overview": "The approved direction draws on Thunderstore and Gale: charcoal surfaces, soft\nwhite text, restrained blue actions, and useful game and Workshop artwork. The\ninterface feels familiar to a player while keeping discovery, installed content,\nand transfer recovery easy to read.\n\nThe visual system is quiet and practical. A system UI font, packaged monochrome\nicons, and compact controls give content the emphasis. Tonal surfaces establish\nhierarchy; artwork identifies the game or mod rather than decorating the shell.",
+    "keyCharacteristics": [
+      "Game context stays visible beside a persistent navigation rail.",
+      "Soft white text and restrained blue sit on layered charcoal surfaces.",
+      "Landscape artwork and concise metadata lead discovery.",
+      "Compact controls retain clear labels, keyboard paths, and visible focus."
+    ],
+    "rules": [
+      {
+        "name": "The Labelled State Rule",
+        "body": "Pair semantic color with visible state text or an icon and label. A dot or colored border alone cannot explain a transfer state.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tonal Layer Rule",
+        "body": "Establish hierarchy with the existing charcoal layers, spacing, and selection treatment before adding new surface decoration.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the existing charcoal layers and blue accent for hierarchy and interaction.",
+      "Do keep game context visible and use real game or Workshop artwork when available.",
+      "Do retain visible labels, keyboard focus, and accessible names in compact navigation.",
+      "Do preserve usable scrolling and reachable actions at the minimum window size.",
+      "Do pair progress and semantic colors with explicit text."
+    ],
+    "donts": [
+      "Don't introduce gradients, decorative stock imagery, or a separate display typeface.",
+      "Don't treat the HTML screenshot gallery as a replacement for the native Qt source.",
+      "Don't use color alone to communicate failure, authentication, completion, or selection.",
+      "Don't add launch, profile, or enable/disable controls that imply unsupported mod management."
+    ]
+  }
+}

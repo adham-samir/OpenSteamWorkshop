@@ -24,7 +24,7 @@ from .library import (
     UpdateInfo,
 )
 
-THUMB = 168  # rendered thumbnail box
+THUMB = 960  # enough artwork detail for desktop and high-DPI cards
 
 GameRole = Qt.ItemDataRole.UserRole + 11
 MetaRole = Qt.ItemDataRole.UserRole + 12
@@ -185,9 +185,10 @@ def _meta_line(item: WorkshopItem) -> str:
 
 
 def _render_cover(src: QImage) -> QImage:
-    img = src.scaled(THUMB, THUMB, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                     Qt.TransformationMode.SmoothTransformation)
-    return img
+    if src.width() <= THUMB and src.height() <= THUMB:
+        return src
+    return src.scaled(THUMB, THUMB, Qt.AspectRatioMode.KeepAspectRatio,
+                      Qt.TransformationMode.SmoothTransformation)
 
 
 # ---------------------------------------------------------------- imports
@@ -376,7 +377,19 @@ class JobTableModel(QAbstractTableModel):
 
     def _refilter(self, emit: bool) -> None:
         kept = [j for j in self._order if matches_filter(self._snapshots[j], self._filter)]
+        if kept == self._filtered_order:
+            if emit and kept:
+                self.dataChanged.emit(self.index(0, 0), self.index(len(kept)-1, self.columnCount()-1))
+            return
+        if emit:
+            self.layoutAboutToBeChanged.emit()
+        old_indexes = self.persistentIndexList()
+        ids = [self._filtered_order[index.row()] for index in old_indexes]
         self._filtered_order = kept
+        rows = {jobid: row for row, jobid in enumerate(kept)}
+        new_indexes = [self.index(rows[jobid], index.column()) if jobid in rows else QModelIndex()
+                       for index, jobid in zip(old_indexes, ids)]
+        self.changePersistentIndexList(old_indexes, new_indexes)
         if emit:
             self.layoutChanged.emit()
 
@@ -396,7 +409,11 @@ class JobTableModel(QAbstractTableModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        snap = self._snapshots[self._filtered_order[index.row()]]
+        if not 0 <= index.row() < len(self._filtered_order):
+            return None
+        snap = self._snapshots.get(self._filtered_order[index.row()])
+        if snap is None:
+            return None
         if role == SnapshotRole:
             return snap
         col = index.column()

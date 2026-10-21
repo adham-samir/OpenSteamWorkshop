@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QModelIndex, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtCore import QItemSelectionModel, QModelIndex, QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
@@ -25,7 +26,7 @@ from PySide6.QtWidgets import (
 from ..models import ItemDetails, WorkshopItem, fmt_count, fmt_size
 from ..steam_api import SORTS
 from . import icons, theme
-from .delegates import GameResultDelegate, ItemCardDelegate
+from .delegates import GameResultDelegate, ItemCardDelegate, ItemListDelegate
 from .item_models import (
     FavoriteRole,
     GameListModel,
@@ -258,10 +259,7 @@ class CoverFrame(QLabel):
         if img.isNull():
             self.show_placeholder()
             return
-        self._pixmap = QPixmap.fromImage(img.scaled(
-            self.width() or 296, self.height(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        ))
+        self._pixmap = QPixmap.fromImage(img)
         self.setText("")
         self.update()
 
@@ -281,13 +279,12 @@ class CoverFrame(QLabel):
             icons.paint(p, r, "eye", "#3C4652")
             p.end()
             return
-        scaled = self._pixmap.scaled(
-            int(r.width()), int(r.height()), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        x = (scaled.width() - r.width()) / 2
-        y = (scaled.height() - r.height()) / 2
-        p.drawPixmap(QRectF(0, 0, r.width(), r.height()), scaled, QRectF(x, y, r.width(), r.height()))
+        p.fillRect(r, QColor(theme.SURFACE))
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        scale = min(r.width()/self._pixmap.width(), r.height()/self._pixmap.height())
+        width, height = self._pixmap.width()*scale, self._pixmap.height()*scale
+        target = QRectF(r.center().x()-width/2, r.center().y()-height/2, width, height)
+        p.drawPixmap(target, self._pixmap, QRectF(self._pixmap.rect()))
         p.end()
 
 
@@ -306,6 +303,7 @@ class InspectorPanel(QFrame):
     deps_clicked = Signal(object)
     copy_clicked = Signal(object)
     browser_clicked = Signal(object)
+    close_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -319,10 +317,14 @@ class InspectorPanel(QFrame):
         outer.setSpacing(0)
         head = QHBoxLayout()
         head.setContentsMargins(14, 10, 12, 10)
-        head_label = QLabel("Inspector")
+        head_label = QLabel("Mod details")
         head_label.setStyleSheet(f"font-weight: 600; color: {theme.TEXT2};")
         head.addWidget(head_label)
         head.addStretch(1)
+        self.close_btn = _button("Close", icon_name="x")
+        self.close_btn.setAccessibleName("Close mod details")
+        self.close_btn.clicked.connect(self.close_requested.emit)
+        head.addWidget(self.close_btn)
         outer.addLayout(head)
         line = QFrame()
         line.setFixedHeight(1)
@@ -341,6 +343,14 @@ class InspectorPanel(QFrame):
 
         self.cover = CoverFrame()
         self.body.addWidget(self.cover)
+        self.destination = QLabel("")
+        self.destination.setWordWrap(True)
+        self.destination.setProperty("role", "muted")
+        self.body.addWidget(self.destination)
+        self.installed_status = QLabel("")
+        self.installed_status.setWordWrap(True)
+        self.installed_status.setProperty("role", "muted")
+        self.body.addWidget(self.installed_status)
 
         self.loading_row = QWidget()
         load_lay = QHBoxLayout(self.loading_row)
@@ -355,11 +365,13 @@ class InspectorPanel(QFrame):
 
         self.title_label = QLabel("")
         self.title_label.setWordWrap(True)
+        self.title_label.setTextFormat(Qt.TextFormat.PlainText)
         self.title_label.setStyleSheet("font-size: 15.5px; font-weight: 650;")
         self.body.addWidget(self.title_label)
 
         self.byline = QLabel("")
         self.byline.setWordWrap(True)
+        self.byline.setTextFormat(Qt.TextFormat.PlainText)
         self.byline.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12px;")
         self.body.addWidget(self.byline)
 
@@ -410,6 +422,7 @@ class InspectorPanel(QFrame):
 
         self.desc = QLabel("")
         self.desc.setWordWrap(True)
+        self.desc.setTextFormat(Qt.TextFormat.PlainText)
         self.desc.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.desc.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12.5px;")
         self.body.addWidget(self.desc, 1)
@@ -434,7 +447,7 @@ class InspectorPanel(QFrame):
         actions_row = QVBoxLayout()
         actions_row.setSpacing(8)
         self.download_btn = _button("Download", accent=True, icon_name="download")
-        self.download_btn.setFixedHeight(34)
+        self.download_btn.setFixedHeight(40)
         self.download_btn.setAccessibleName("Download this item")
         actions_row.addWidget(self.download_btn)
         sub_row = QHBoxLayout()
@@ -443,7 +456,11 @@ class InspectorPanel(QFrame):
         sub_row.addWidget(self.deps_btn, 1)
         sub_row.addWidget(self.browser_btn, 0)
         actions_row.addLayout(sub_row)
-        self.body.addLayout(actions_row)
+        actions_widget = QWidget()
+        footer = QVBoxLayout(actions_widget)
+        footer.setContentsMargins(13, 10, 13, 12)
+        footer.addLayout(actions_row)
+        outer.addWidget(actions_widget)
 
         self.download_btn.clicked.connect(self._maybe_download)
         self.deps_btn.clicked.connect(self._maybe_deps)
@@ -472,6 +489,7 @@ class InspectorPanel(QFrame):
     def set_place(self, item: WorkshopItem) -> None:
         """Fill everything the card model already knows; details stream in later."""
         self.item = item
+        self.installed_status.clear()
         self._deps_item = None
         self.title_label.setText(item.title or f"item {item.publishedfileid}")
         self.byline.setText("")
@@ -527,7 +545,12 @@ class InspectorPanel(QFrame):
             self.download_btn.setText("Preview collection…")
         else:
             self.download_btn.setText("Download")
-        self._deps_item = WorkshopItem(publishedfileid=det.fileid, appid=appid or 0, title=det.title)
+        self._deps_item = WorkshopItem(publishedfileid=det.fileid, appid=appid or 0, title=det.title,
+                                       file_type=det.file_type)
+        # Ownership resolved by Steam is authoritative, including collections.
+        self.item = self._deps_item
+        if det.title:
+            self.title_label.setText(det.title)
 
     def set_error(self, message: str) -> None:
         self.set_load_state(False)
@@ -590,6 +613,8 @@ class BulkBar(QFrame):
 class BrowsePage(QWidget):
     """Intents go out; the controller performs async work and feeds state in."""
 
+    presentation_changed = Signal(str)
+    details_closed = Signal()
     game_search_requested = Signal(str)
     app_picked = Signal(int)
     workshop_change_requested = Signal()
@@ -612,6 +637,10 @@ class BrowsePage(QWidget):
         self._closed = False
         self._mods_path = ""
         self._default_mods_root = ""
+        self.presentation = "cards"
+        self._wide_details = True
+        self._details_open = False
+        self._detail_scroll = 0
 
         self.hero = HeroView()
         self.results = ResultsView()
@@ -649,6 +678,7 @@ class BrowsePage(QWidget):
         self.cards.setAccessibleName("Workshop items")
         self.cards.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.cards.setWordWrap(True)
+        self.cards.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.cards.customContextMenuRequested.connect(self._open_menu)
 
         # grid page: toolbar, meta line, cards, bulk bar
@@ -667,6 +697,14 @@ class BrowsePage(QWidget):
             self.sortCombo.addItem(label, key)
         self.sortCombo.setAccessibleName("Sort Workshop results")
         tools.addWidget(self.sortCombo)
+        self.cards_btn = _button("Cards")
+        self.list_btn = _button("List")
+        for button, mode in ((self.cards_btn, "cards"), (self.list_btn, "list")):
+            button.setCheckable(True)
+            button.setAccessibleName(f"Show mods as {mode}")
+            button.clicked.connect(lambda _=False, m=mode: self.set_presentation(m))
+            tools.addWidget(button)
+        self.cards_btn.setChecked(True)
         self.prevBtn = _button("‹")
         self.nextBtn = _button("›")
         self.pageLabel = QLabel("—")
@@ -705,18 +743,19 @@ class BrowsePage(QWidget):
         self._page_indices = {MODE_HERO: 0, MODE_RESULTS: 1, MODE_GRID: 2}
 
         header_top = QHBoxLayout()
-        header_top.addWidget(self._page_title())
+        self.page_title = self._page_title()
+        header_top.addWidget(self.page_title, 1)
         self.game_chip = QLabel("No game selected")
         self.game_chip.setObjectName("gameChip")
         self.game_chip.setStyleSheet(
             f"color: {theme.TEXT2}; font-size: 12.5px; padding: 2px 9px;"
             f"border: 1px solid {theme.BORDER}; border-radius: 7px;"
         )
-        header_top.addWidget(self.game_chip)
+        self.game_chip.hide()
         self.change_btn = _button("Change")
         self.change_btn.setFlat(True)
         self.change_btn.setStyleSheet(f"color: {theme.TEXT2}; border: none;")
-        header_top.addWidget(self.change_btn)
+        self.change_btn.hide()
         self.pin_btn = _button("Pin", icon_name="star")
         self.pin_btn.setCheckable(True)
         self.pin_btn.setAccessibleName("Pin current game")
@@ -728,7 +767,7 @@ class BrowsePage(QWidget):
         self.mods_btn.setVisible(False)
         self.mods_btn.clicked.connect(self._show_mods_menu)
         header_top.addWidget(self.mods_btn)
-        header_top.addStretch(1)
+
 
         search_row = QHBoxLayout()
         search_row.setSpacing(7)
@@ -742,9 +781,12 @@ class BrowsePage(QWidget):
         header = QVBoxLayout()
         header.setSpacing(8)
         header.addLayout(header_top)
-        header.addLayout(search_row)
+        self.search_holder = QWidget()
+        self.search_holder.setLayout(search_row)
+        header.addWidget(self.search_holder)
 
         left = QWidget()
+        self.content = left
         self._left_layout = QVBoxLayout(left)
         self._left_layout.setContentsMargins(18, 14, 10, 10)
         self._left_layout.setSpacing(12)
@@ -752,6 +794,8 @@ class BrowsePage(QWidget):
         self._left_layout.addWidget(self.stack, 1)
 
         self.inspector = InspectorPanel()
+        self.inspector.close_requested.connect(self.dismiss_details)
+        QShortcut(QKeySequence("Escape"), self, activated=self.dismiss_details)
         self.inspector.hide()
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(left)
@@ -790,13 +834,14 @@ class BrowsePage(QWidget):
             lambda *_: self._selection_timer.start(0)
         )
         self.cards.activated.connect(self._activate_card)
+        self.cards.clicked.connect(self._reopen_details)
         self.set_mode(MODE_HERO)
         self.set_browser_enabled(False)
 
     @staticmethod
     def _page_title() -> QLabel:
-        label = QLabel("Browse")
-        label.setStyleSheet(f"font-size: 19px; font-weight: 650; color: {theme.TEXT};")
+        label = QLabel("Browse mods")
+        label.setStyleSheet(f"font-size: 23px; font-weight: 650; color: {theme.TEXT};")
         return label
 
     # -------------------------------------------------------- internals
@@ -815,13 +860,15 @@ class BrowsePage(QWidget):
         else:
             self.bulk_bar.hide()
 
+    def _reopen_details(self, index):
+        # A dismissed item remains selected; clicking it again must reopen it.
+        if not self._details_open and len(self.selected_items()) == 1:
+            self.item_action_requested.emit((index.data(ItemRole), "inspect"))
+
     def _activate_card(self, index) -> None:
-        """Return key with the inspector open is the primary action (Download)."""
-        if isinstance(index, bool) or self.inspector.isHidden():
-            return
-        item = index.data(ItemRole)
+        item = index.data(ItemRole) if not isinstance(index, bool) else None
         if item is not None:
-            self.inspector.download_clicked.emit(item)
+            self.item_action_requested.emit((item, "inspect"))
 
     def _open_menu(self, pos) -> None:
         index = self.cards.indexAt(pos)
@@ -866,7 +913,10 @@ class BrowsePage(QWidget):
     def set_mode(self, mode: str) -> None:
         self.stack.setCurrentIndex(self._page_indices.get(mode, 0))
         self._update_header_buttons()
+        self.search_holder.setVisible(mode != MODE_GRID)
+        self.page_title.setText(self.current_game_target[1] if mode == MODE_GRID and self.current_game_target else "Games")
         if mode != MODE_GRID:
+            self.content.show()
             self.inspector.hide()
 
     def set_personal(self, recent, favorites) -> None:
@@ -918,7 +968,7 @@ class BrowsePage(QWidget):
 
     def _update_header_buttons(self) -> None:
         show = self.current_game_target is not None and self.mode != MODE_HERO
-        self.change_btn.setVisible(show)
+        self.change_btn.hide()
         self.pin_btn.setVisible(show)
         self.mods_btn.setVisible(show)
 
@@ -949,9 +999,11 @@ class BrowsePage(QWidget):
     def set_grid_state(self, title: str | None, detail: str = "") -> None:
         if title is None:
             self.grid_state.hide()
+            self.cards.setEnabled(True)
             return
         self.grid_state.setText(f"<b>{title}</b><br>{detail}" if detail else f"<b>{title}</b>")
         self.grid_state.show()
+        self.cards.setEnabled(False)
         self.browserMessage.setText("")
 
     def set_pager(self, page: int, pages: int) -> None:
@@ -967,6 +1019,10 @@ class BrowsePage(QWidget):
     def set_game(self, appid: int, name: str) -> None:
         self.current_game_target = (appid, name) if appid else None
         self.game_chip.setText(f"{name} · app {appid}" if appid else "No game selected")
+        self.page_title.setText(name or (f"App {appid}" if appid else "Browse mods"))
+        self.page_title.setToolTip(name)
+        self.page_title.setMinimumWidth(0)
+        self.page_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self._update_header_buttons()
 
     def update_game_thumb(self, appid: int, data) -> None:
@@ -995,13 +1051,86 @@ class BrowsePage(QWidget):
             return None
         return self.grid_model.index(row).data(ThumbRole)
 
-    def set_inspector(self, visible: bool) -> None:
-        if visible == self.inspector.isVisible():
+    def set_presentation(self, presentation: str) -> None:
+        presentation = "list" if presentation == "list" else "cards"
+        if presentation == self.presentation:
             return
+        self.presentation = presentation
+        delegate = ItemListDelegate(self.cards) if presentation == "list" else ItemCardDelegate(self.cards)
+        old = self.cards.itemDelegate()
+        self.cards.setItemDelegate(delegate)
+        old.deleteLater()
+        self.cards.setFlow(QListView.Flow.TopToBottom if presentation == "list" else QListView.Flow.LeftToRight)
+        self.cards.setWrapping(presentation == "cards")
+        self.cards.setSpacing(2 if presentation == "list" else GRID_SPACING)
+        self.cards_btn.setChecked(presentation == "cards")
+        self.list_btn.setChecked(presentation == "list")
+        self.cards.doItemsLayout()
+        self.presentation_changed.emit(presentation)
+
+    def set_game_context(self, game) -> None:
+        self.set_game(game.appid, game.name) if game else self.set_game(0, "")
+
+    def set_detail_layout(self, wide: bool) -> None:
+        self._wide_details = wide
+        self.content.setVisible(wide or not self._details_open)
+        if self._details_open:
+            self.inspector.show()
+            if wide:
+                self.splitter.setSizes([max(1, self.width()-350), 350])
+
+    def set_inspector(self, visible: bool) -> None:
+        if visible and not self._details_open:
+            self._detail_scroll = self.cards.verticalScrollBar().value()
+        self._details_open = visible
         self.inspector.setVisible(visible)
-        if visible:
-            sizes = self.splitter.sizes() or [1000]
-            self.splitter.setSizes([max(1, sum(sizes) - 320), 320])
+        self.content.setVisible(self._wide_details or not visible)
+        if visible and self._wide_details:
+            self.splitter.setSizes([max(1, self.width()-350), 350])
+
+    def dismiss_details(self) -> None:
+        if not self._details_open:
+            return
+        self.set_inspector(False)
+        self.cards.setFocus()
+        scroll = self._detail_scroll
+        QTimer.singleShot(0, lambda: self.cards.verticalScrollBar().setValue(scroll))
+        self.details_closed.emit()
+
+    def capture_context(self) -> dict:
+        return {
+            "search": self.modSearchEdit.text(), "sort": self.sortCombo.currentIndex(),
+            "selected": [item.publishedfileid for item in self.selected_items()],
+            "current": self.cards.currentIndex().row(),
+            "scroll": self._detail_scroll if self._details_open and not self._wide_details
+                      else self.cards.verticalScrollBar().value(),
+            "thumbs": {item.publishedfileid: self.card_thumb(item.publishedfileid)
+                       for item in (self.grid_model.item_at(row) for row in range(self.grid_model.rowCount()))},
+            "details": self._details_open,
+        }
+
+    def restore_context(self, context: dict) -> None:
+        self.modSearchEdit.setText(context.get("search", ""))
+        self.sortCombo.blockSignals(True)
+        self.sortCombo.setCurrentIndex(context.get("sort", 0))
+        self.sortCombo.blockSignals(False)
+        for fileid, data in context.get("thumbs", {}).items():
+            self.update_card_thumb(fileid, data)
+        selected = set(context.get("selected", []))
+        sm = self.cards.selectionModel()
+        for row in range(self.grid_model.rowCount()):
+            index = self.grid_model.index(row)
+            if index.data(ItemRole).publishedfileid in selected:
+                sm.select(index, QItemSelectionModel.SelectionFlag.Select)
+        current = self.grid_model.index(context.get("current", -1))
+        sm.setCurrentIndex(current, QItemSelectionModel.SelectionFlag.NoUpdate)
+        self._selection_timer.stop()
+        self._emit_selection()
+        if not context.get("details", False):
+            self.set_inspector(False)
+        value = context.get("scroll", 0)
+        self._detail_scroll = value
+        QTimer.singleShot(0, lambda: self.cards.verticalScrollBar().setValue(value))
 
     def focus_game_search(self) -> None:
         self.game_search.setFocus()

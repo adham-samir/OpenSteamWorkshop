@@ -41,12 +41,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from ..desktop import (
@@ -69,6 +71,7 @@ from . import theme
 from .browse_page import MODE_GRID, MODE_HERO, MODE_RESULTS, BrowsePage
 from .cleanup_dialog import CleanupDialog
 from .downloads_page import DownloadsPage
+from .games_page import GamesPage
 from .imports_page import ImportPage
 from .library import (
     InstalledIndex,
@@ -88,7 +91,7 @@ from .status_strip import StatusStrip
 from .update_dialog import UpdateAllDialog
 
 CACHE_DIR = Path.home() / ".cache" / "OpenSteamWorkshop" / "thumbs"
-PAGE_KEYS = ("browse", "imports", "library", "downloads", "settings")
+PAGE_KEYS = ("games", "browse", "imports", "library", "downloads", "settings")
 
 
 def fetch_bytes(url: str, cancel=None) -> bytes:
@@ -303,6 +306,11 @@ class MainWindow(QMainWindow):
         self._closing = False
         self._auth_lock = threading.Lock()
         self._selection: list[WorkshopItem] = []
+        self._game_contexts: dict[int, dict] = {}
+        self._browse_total = 0
+        self._browse_loading = False
+        self._personal_art_requested: set[int] = set()
+        self._game_art: dict = {}
         self._queue_path = Path(queue_path) if queue_path else CONFIG_DIR / "queue.json"
         self._job_snapshots: dict[str, JobSnapshot] = {}
         self._job_rows: dict[str, _JobRowCompat] = {}
@@ -416,11 +424,19 @@ class MainWindow(QMainWindow):
         self.nav = NavRail()
         self.nav.navigate.connect(self.navigate)
         self.browse = BrowsePage()
+        self.games_page = GamesPage()
+        self.browse.set_presentation(self.state.browse_presentation)
+        self.browse.presentation_changed.connect(self.state.set_browse_presentation)
+        self.games_page.search_requested.connect(self._game_search)
+        self.games_page.app_picked.connect(self._select_app)
+        self.games_page.import_requested.connect(self._open_bulk_without_prefill)
+        self.nav.switch_requested.connect(self._show_game_switcher)
         self.imports = ImportPage()
         self.library = LibraryPage()
         self.downloads = DownloadsPage()
         self.settings_page = SettingsPage()
         self._pages = {
+            "games": self.games_page,
             "browse": self.browse,
             "imports": self.imports,
             "library": self.library,
@@ -430,7 +446,8 @@ class MainWindow(QMainWindow):
         self.page_stack = QStackedWidget()
         for key in PAGE_KEYS:
             self.page_stack.addWidget(self._pages[key])
-        self.page_stack.setCurrentWidget(self.browse)
+        self.page_stack.setCurrentWidget(self.games_page)
+        self.nav.set_active("games")
 
         self.strip = StatusStrip()
         self.strip.activated.connect(lambda: self.navigate("downloads"))
@@ -439,7 +456,24 @@ class MainWindow(QMainWindow):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
         row.addWidget(self.nav)
-        row.addWidget(self.page_stack, 1)
+        content = QWidget()
+        cv = QVBoxLayout(content)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.setSpacing(0)
+        header = QWidget()
+        header.setObjectName("GlobalHeader")
+        hv = QHBoxLayout(header)
+        hv.setContentsMargins(24, 12, 24, 12)
+        self.workspace_label = QLabel("Games")
+        self.workspace_label.setProperty("role", "muted")
+        hv.addWidget(self.workspace_label, 1)
+        self.import_button = QPushButton("Import links")
+        self.import_button.setProperty("role", "primary")
+        self.import_button.clicked.connect(self._open_bulk_without_prefill)
+        hv.addWidget(self.import_button)
+        cv.addWidget(header)
+        cv.addWidget(self.page_stack, 1)
+        row.addWidget(content, 1)
         work = QWidget()
         work.setLayout(row)
         layout = QVBoxLayout()
@@ -460,6 +494,7 @@ class MainWindow(QMainWindow):
         self._wire_settings()
         self._wire_inspector()
         self._refresh_personal()
+        self.downloads.set_concurrency(int(get("parallel_downloads") or 1))
         self._on_resize()
 
     # ---------------------------------------------------------- wiring
@@ -474,6 +509,7 @@ class MainWindow(QMainWindow):
         browse.page_requested.connect(self._goto_page)
         browse.import_requested.connect(self._open_bulk_without_prefill)
         browse.selection_changed.connect(self._on_selection_count)
+        browse.details_closed.connect(self._details_closed)
         browse.selection_items_changed.connect(self._on_selection_items)
         browse.bulk_download_requested.connect(self._download_selected)
         browse.item_action_requested.connect(self._on_item_action)
@@ -526,17 +562,16 @@ class MainWindow(QMainWindow):
     def navigate(self, key: str) -> None:
         if key not in self._pages:
             return
-        if key != "library" and self.page_stack.currentWidget() is self.library:
-            self._library_scan_cancel.set()
-            self._library_meta_cancel.set()
         page = self._pages[key]
         self.page_stack.setCurrentWidget(page)
         self.nav.set_active(key)
+        self.workspace_label.setText({"games": "Games", "browse": "Browse mods", "imports": "Import links", "library": "Installed", "downloads": "Downloads", "settings": "Settings"}[key])
         self.setWindowTitle("OpenSteamWorkshop — " + key.title())
         if key == "settings":
             self._load_settings()
         if key == "library":
-            self._scan_library()
+            if self._library_content_dir is None:
+                self._scan_library()
             self.statusBar().showMessage(
                 "Library: installed Workshop content from your mods root and per-game folders."
             )
@@ -563,21 +598,43 @@ class MainWindow(QMainWindow):
         compact = self.width() < 1120
         self.nav.set_compact(compact)
         self.strip.set_narrow(self.width() < 1080)
-        show_inspector = (
-            self.width() >= 1080
-            and len(self._selection) == 1
-            and self.page_stack.currentWidget() is self.browse
-            and self.browse.mode == MODE_GRID
-        )
-        if not show_inspector:
-            self.browse.set_inspector(False)
-        elif self.browse.inspector.isHidden():
-            self.browse.set_inspector(True)
+        self.browse.set_detail_layout(self.width() >= 1280)
 
     def _focus_search(self) -> None:
-        if self.page_stack.currentWidget() is not self.browse:
-            self.navigate("browse")
-        self.browse.focus_game_search()
+        self.navigate("games")
+        self.games_page.search.setFocus()
+        self.games_page.search.selectAll()
+
+    def _show_game_switcher(self) -> None:
+        menu = QMenu(self)
+        menu.setMinimumWidth(300)
+        search = QLineEdit()
+        search.setPlaceholderText("Find a game…")
+        search.setAccessibleName("Search game switcher")
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(search)
+        menu.addAction(action)
+        games = {g.appid: g for g in self.state.favorite_games() + self.state.recent_games()}
+        actions = []
+        for game in games.values():
+            label = ("Pinned · " if self.state.is_favorite(game.appid) else "") + game.name
+            item = menu.addAction(label, lambda g=game: self._select_app(g.appid))
+            actions.append((game.name.casefold(), item))
+        def filter_games(text):
+            for name, item in actions:
+                item.setVisible(text.casefold() in name)
+        search.textChanged.connect(filter_games)
+        def find():
+            term = search.text().strip()
+            menu.close()
+            if term:
+                self._game_search(term)
+        search.returnPressed.connect(find)
+        menu.addSeparator()
+        menu.addAction("Search all Steam games", lambda: self._focus_search())
+        menu.popup(self.nav.switcher.mapToGlobal(self.nav.switcher.rect().bottomLeft()))
+        search.setFocus()
+        self._switch_menu = menu
 
     def _focus_workshop_search(self) -> None:
         if self.page_stack.currentWidget() is self.browse:
@@ -587,6 +644,11 @@ class MainWindow(QMainWindow):
 
     def on_error(self, msg: str) -> None:
         m = msg.strip()
+        if self.workspace == "games":
+            self.games_page.find.setEnabled(True)
+            self.games_page.message.setText(f"Could not search Steam: {m}. Try again or import a Workshop link.")
+        if self.browse._details_open:
+            self.browse.inspector.set_error(m)
         if "Workshop page is missing" in m or "redesign" in m:
             QMessageBox.warning(self, "Steam page changed", m)
         else:
@@ -601,6 +663,9 @@ class MainWindow(QMainWindow):
         if not text:
             self.browse.focus_game_search()
             return
+        self.navigate("games")
+        self.games_page.search.setText(text)
+        self.games_page.show_loading(text)
         self._game_term = text
         self._requests["games"] = self._requests.get("games", 0) + 1
         for key in ("app", "details"):
@@ -626,9 +691,13 @@ class MainWindow(QMainWindow):
     def on_games_found(self, games) -> None:
         self.browse.find_button.setEnabled(True)
         self.games = games or []
+        self.games_page.set_games(self._game_term, self.games)
         old = self.current_game
         term = self._game_term
-        self.browse.set_games(term, self.games)
+        if self.current_game is None:
+            self.browse.set_games(term, self.games)
+        else:
+            self.browse.results.set_games(term, self.games)
         self.browse.results.set_favorites(self.state.favorite_ids())
         if not self.games:
             # keep browsing context; the results list doubles as confirmation
@@ -655,41 +724,83 @@ class MainWindow(QMainWindow):
         if generation != self._requests.get("games"):
             return
         self.browse.update_game_thumb(appid, data)
+        self.games_page.update_thumb(appid, data)
+        self._game_art[appid] = data
 
     def _change_game(self) -> None:
         """'Change' → put the results panel / hero back in front."""
-        self.browse.set_mode(MODE_RESULTS if self.games else MODE_HERO)
-        self.browse.focus_game_search()
+        self._focus_search()
+
+    def _save_browse_context(self) -> None:
+        if self.current_game and self.browse.mode == MODE_GRID:
+            self._game_contexts[self.current_game.appid] = {
+                "game": self.current_game, "items": list(self.items),
+                "page": self.page, "pages": self.total_pages, "total": self._browse_total,
+                "ready": not self._browse_loading,
+                "view": self.browse.capture_context(),
+            }
 
     def _select_app(self, appid: int) -> None:
         self.browse.find_button.setEnabled(True)
-        for key in ("games", "browse", "details", "inspector"):
+        self.games_page.find.setEnabled(True)
+        self._save_browse_context()
+        for key in ("games", "app", "browse", "details", "inspector"):
             self._requests[key] = self._requests.get(key, 0) + 1
-        self.current_game = Game(appid, f"App {appid}")
-        self.items = []
+        cached = self._game_contexts.get(appid)
+        known = next((g for g in self.games + self.state.recent_games() + self.state.favorite_games()
+                      if g.appid == appid), None)
+        self.current_game = cached["game"] if cached else known or Game(appid, f"App {appid}")
         self._selection = []
-        self.browse.grid_model.set_items([])
-        self.browse.set_browser_enabled(False)
-        self.browse.set_game(appid, "")
+        self.browse.set_inspector(False)
+        self.browse.set_game_context(self.current_game)
         self.browse.set_mode(MODE_GRID)
-
-        def work():
-            return get_app_name(appid, self.hub.cancel)
-
-        self._request("app", work, lambda name: self._after_name(appid, name))
+        self.navigate("browse")
+        self.nav.set_game_context(self.current_game)
+        self.library.set_game_context(self.current_game)
+        if cached:
+            self.items = cached["items"]
+            self.page, self.total_pages = cached["page"], cached["pages"]
+            self._browse_total = cached["total"]
+            self._browse_loading = not cached.get("ready", True)
+            self.browse.set_items(self.items, self._browse_total, self.page, self.total_pages)
+            self.browse.set_browser_enabled(True)
+            self.browse.restore_context(cached["view"])
+            self._remember_game(self.current_game)
+            if self._browse_loading:
+                if self.current_game.name == f"App {appid}":
+                    self.browse.set_grid_state("Loading game…", "Connecting to Steam Workshop.")
+                    self._request("app", lambda: get_app_name(appid, self.hub.cancel),
+                                  lambda name: self._after_name(appid, name))
+                else:
+                    self._do_browse()
+            return
+        self._browse_total = 0
+        self._browse_loading = True
+        self.items = []
+        self.page = self.total_pages = 1
+        self.browse.grid_model.set_items([])
+        self.browse.restore_context({})
+        self.browse.set_browser_enabled(False)
+        self.browse.set_grid_state("Loading game…", "Connecting to Steam Workshop.")
+        if known:
+            self._after_name(appid, known.name)
+        else:
+            self._request("app", lambda: get_app_name(appid, self.hub.cancel),
+                          lambda name: self._after_name(appid, name))
 
     def _after_name(self, appid: int, name: str) -> None:
         if not self.current_game or self.current_game.appid != appid:
             return
-        self.current_game = Game(appid=appid, name=name)
-        self.browse.set_game(appid, name)
+        image = self.current_game.image or f"https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
+        self.current_game = Game(appid=appid, name=name, image=image)
+        self.browse.set_game_context(self.current_game)
+        self.nav.set_game_context(self.current_game)
+        self.library.set_game_context(self.current_game)
         self.browse.game_search.setText(name)
-        self.browse.clear_workshop_search()
         self.setWindowTitle(f"OpenSteamWorkshop — {name}")
-        self.page = 1
         self.browse.set_browser_enabled(True)
         self._remember_game(self.current_game)
-        self.refresh()
+        self._do_browse()
 
     # ------------------------------------------------------- personal state
 
@@ -699,10 +810,26 @@ class MainWindow(QMainWindow):
 
     def _refresh_personal(self) -> None:
         self.browse.set_personal(self.state.recent_games(), self.state.favorite_games())
+        self.games_page.set_personal(self.state.recent_games(), self.state.favorite_games())
+        for game in self.state.recent_games() + self.state.favorite_games():
+            if game.appid in self._game_art:
+                self.games_page.update_thumb(game.appid, self._game_art[game.appid])
+            elif game.appid not in self._personal_art_requested:
+                self._personal_art_requested.add(game.appid)
+                url = game.image or f"https://cdn.cloudflare.steamstatic.com/steam/apps/{game.appid}/header.jpg"
+                self.hub.call(lambda u=url: fetch_bytes(u, self.hub.cancel),
+                              lambda data, aid=game.appid: self._personal_thumb(aid, data),
+                              on_error=lambda _: None)
         self.browse.results.set_favorites(self.state.favorite_ids())
         if self.current_game is not None:
             self.browse.set_favorite(self.state.is_favorite(self.current_game.appid))
         self._refresh_mods_folder()
+
+    def _personal_thumb(self, appid, data):
+        if self._closing:
+            return
+        self._game_art[appid] = data
+        self.games_page.update_thumb(appid, data)
 
     # ---------------------------------------------------- per-game mods folder
 
@@ -783,16 +910,8 @@ class MainWindow(QMainWindow):
             if appid_guess:
                 self._select_app(appid_guess)
             return
-        if len(fileids) > 1:
-            self._open_bulk("\n".join(str(n) for n in fileids), appid_hint=appid_guess)
-        else:
-            fid = fileids[0]
-            self.statusBar().showMessage("Loading item details…")
-            self._request(
-                "details",
-                lambda: get_item_details(fid, self.hub.cancel),
-                lambda det: self._show_details_dialog(det, appid_guess),
-            )
+        self.games_page.find.setEnabled(True)
+        self._open_bulk("\n".join(str(n) for n in fileids), appid_hint=appid_guess)
 
     def _show_details_dialog(self, details: ItemDetails, fallback_appid=None) -> None:
         """Legacy item-details entry point; uses the item's own appid when known."""
@@ -869,6 +988,7 @@ class MainWindow(QMainWindow):
         self._do_browse()
 
     def _do_browse(self) -> None:
+        self._browse_loading = True
         appid = self.current_game.appid
         sort = self.browse.current_sort()
         text = self.browse.workshop_search_text()
@@ -894,7 +1014,9 @@ class MainWindow(QMainWindow):
             return
         if page is not None:
             self.page = page
+        self._browse_loading = False
         self.items = items
+        self._browse_total = total
         self.total_pages = pages or 1
         self.browse.set_items(items, total, self.page, self.total_pages)
         self.statusBar().showMessage(
@@ -918,28 +1040,33 @@ class MainWindow(QMainWindow):
         self._selection = browse.selected_items()
         if count >= 2:
             browse.set_inspector(False)
+            self._details_closed()
         elif count == 1 and not self._closing:
             # single: show inspector (unless the window is too narrow)
-            inspect = self.width() >= 1080
-            browse.set_inspector(inspect)
+            browse.set_inspector(True)
         elif count == 0:
             browse.set_inspector(False)
+            self._requests["inspector"] = self._requests.get("inspector", 0) + 1
+
+    def _details_closed(self):
+        self._requests["inspector"] = self._requests.get("inspector", 0) + 1
 
     def _on_selection_items(self, items: list) -> None:
         if self._closing or len(items) != 1:
             return
         item = items[0]
         inspector = self.browse.inspector
-        if self.browse.inspector.isHidden():
-            return  # narrow window: bulk/single actions still work in the bulk bar
+        if not self.browse._details_open:
+            return
         highway = self.browse.card_thumb(item.publishedfileid)
         inspector.set_place(item)
         inspector.set_cover(highway)
+        self._set_inspector_location(item)
         appid = item.appid or (self.current_game.appid if self.current_game else None)
         self._request(
             "inspector",
             lambda: get_item_details(item.publishedfileid, self.hub.cancel),
-            lambda det: inspector.set_details(det, appid),
+            lambda det: self._apply_inspector_details(det, appid),
         )
 
     # ------------------------------------------------------------ item actions
@@ -957,11 +1084,20 @@ class MainWindow(QMainWindow):
         elif action == "copy":
             self._copy(item.url)
         elif action == "inspect":
-            if self.browse.inspector.isHidden():
-                self.browse.set_inspector(self.width() >= 1080)
-            self.browse.cards.setCurrentIndex(self.browse.cards.indexAt(
-                self.browse.cards.visualRect(self.browse.cards.currentIndex())
-            ))
+            self.browse.set_inspector(True)
+            self._selection = [item]
+            self._on_selection_items([item])
+
+    def _set_inspector_location(self, item):
+        target = self._resolve_deliver_to(item.appid) or self._default_mods_root()
+        self.browse.inspector.destination.setText(f"Download to {target}")
+        hit = self.installed.lookup(item.appid, item.publishedfileid)
+        self.browse.inspector.installed_status.setText(f"Installed · {hit.path}" if hit else "")
+
+    def _apply_inspector_details(self, details, appid):
+        self.browse.inspector.set_details(details, appid)
+        if self.browse.inspector.item:
+            self._set_inspector_location(self.browse.inspector.item)
 
     def _inspector_download(self, item: WorkshopItem) -> None:
         if item.file_type == 2:
@@ -1080,7 +1216,10 @@ class MainWindow(QMainWindow):
             self._open_bulk("\n".join(str(n) for n in selected))
 
     def _open_bulk_without_prefill(self) -> None:
-        self._open_bulk()
+        self.navigate("imports")
+        if not self.imports.source.toPlainText().strip():
+            self.imports.hint.setText(str(self.current_game.appid) if self.current_game else "")
+        self.imports.source.setFocus()
 
     def _open_bulk(self, references="", *, dependencies=False, appid_hint=None):
         # Imports workspace instead of a blocking dialog; existing entry points prefill.
@@ -1149,6 +1288,7 @@ class MainWindow(QMainWindow):
         self._job_rows.setdefault(job.id, _JobRowCompat()).update(job)
         self.downloads.upsert(job)
         if job.state is JobState.DONE and job.fileid:
+            self._library_content_dir = None
             self.installed.record(
                 job.appid,
                 job.fileid,
@@ -1190,20 +1330,22 @@ class MainWindow(QMainWindow):
             if s.state in (JobState.RUNNING, JobState.WAITING_FOR_AUTH)
         ]
         running = [s for s in live if s.state is JobState.RUNNING]
-        current = running[0] if running else (live[0] if live else (active[0] if active else None))
+        current = running[0] if running else (live[0] if live else None)
         if current is None:
             self.strip.update_state("", "No active downloads.", False, 0.0, queued, failed)
         else:
             progress_text = f"{current.progress:.0f}%" if current.progress > 0 else "starting…"
             self.strip.update_state(
                 current.title,
-                f"{current.state.value} · {progress_text}",
-                True,
+                f"{current.state.value} · {progress_text}" if running else current.state.value,
+                current.state is JobState.RUNNING,
                 current.progress,
                 queued,
                 failed,
                 len(live),
             )
+        attention = sum(s.state in (JobState.INTERRUPTED, JobState.WAITING_FOR_AUTH) for s in snapshots)
+        self.strip.set_hint(f"{attention} need attention · Open Downloads" if attention else "Open Downloads")
         self.nav.set_counts(queued, failed)
         self.downloads.update_counts()
 
@@ -1334,6 +1476,7 @@ class MainWindow(QMainWindow):
         root = Path(get("content_root"))
         path = content_dir(root)
         self._library_content_dir = path
+        self.library._save_scope_context(self.library.installed_scope)
         self.library.show_loading(path)
         game_paths = dict(self.state.game_paths)
         self.hub.call(
@@ -1352,6 +1495,8 @@ class MainWindow(QMainWindow):
         self.installed.replace(items, duplicates)
         self._installed_ready = True
         self.library.show_items(items, path, len(duplicates))
+        self.library.set_duplicate_groups(duplicates)
+        self.library._apply_scope()
         self.nav.set_library_count(len(items))
         noun = "item" if len(items) == 1 else "items"
         self.statusBar().showMessage(
@@ -1397,7 +1542,7 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         if items is None:
-            items = self.library.model.items()
+            items = self.library.visible_items()
         items = list(items)
         if not items:
             self.statusBar().showMessage("Nothing installed to check for updates", 4000)
@@ -1445,7 +1590,9 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
 
     def _review_duplicates(self) -> None:
-        groups = list(self.installed.duplicates() or self._duplicate_groups)
+        ids = {item.fileid for item in self.library.visible_items()}
+        groups = [group for group in (self.installed.duplicates() or self._duplicate_groups)
+                  if group.fileid in ids]
         if not groups:
             self.statusBar().showMessage("No duplicate installs found", 4000)
             return
@@ -1524,7 +1671,7 @@ class MainWindow(QMainWindow):
     def _update_all(self) -> None:
         """Review every available update, then queue the checked ones."""
         entries = []
-        for item in self.library.model.items():
+        for item in self.library.visible_items():
             update = self.library.model.update_for(item.fileid)
             if update is not None and update.available:
                 entries.append((item, update))
@@ -1569,16 +1716,11 @@ class MainWindow(QMainWindow):
         inspector.set_place(work)
         inspector.set_cover(None)
         inspector.set_load_state(True)
-        wide = self.width() >= 1080
-        self.browse.set_inspector(wide)
+        self.browse.set_inspector(True)
+        self._set_inspector_location(work)
 
         def show_details(details) -> None:
-            if wide:
-                inspector.set_details(details, item.appid)
-            else:
-                # The side inspector is reserved for wide layouts; keep the
-                # action useful at 960 px with the existing details dialog.
-                self._show_details_dialog(details, item.appid)
+            self._apply_inspector_details(details, item.appid)
 
         self._request(
             "inspector",
@@ -1637,7 +1779,7 @@ class MainWindow(QMainWindow):
         self.library.remove_item(item.fileid)
         self.installed.remove(item.appid, item.fileid)
         self._duplicate_groups = self.installed.duplicates()
-        self.library.set_duplicates(len(self._duplicate_groups))
+        self.library.set_duplicate_groups(self._duplicate_groups)
         self._update_status.pop(item.fileid, None)
         self.nav.set_library_count(self.library.model.rowCount())
         self.statusBar().showMessage(f"Deleted {item.label}", 5000)
@@ -1678,6 +1820,8 @@ class MainWindow(QMainWindow):
         self.manager.password = password if self.manager.username else ""
         self.manager.parallel = max(1, min(3, int(parallel or 1)))
         self.manager.ensure_workers()
+        self.downloads.set_concurrency(self.manager.parallel)
+        self._library_content_dir = None
         self._refresh_mods_folder()
         self._refresh_installed_index()
         self.settings_page.confirm_saved()

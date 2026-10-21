@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from . import icons, theme
 
 WIDE_W, RAIL_W = 208, 64
-ITEM_H = 34
+ITEM_H = 40
 
 
 class NavButton(QPushButton):
@@ -28,6 +28,7 @@ class NavButton(QPushButton):
         self.key = key
         self.icon_name = icon_name
         self.setObjectName(f"nav_{key}")
+        self.setProperty("nav", True)
         self._title = title
         self.setText(title)
         self.setAccessibleName(title)
@@ -62,10 +63,12 @@ class NavRail(QFrame):
     """Brand, primary destinations, live counts, and the Secondary group."""
 
     navigate = Signal(str)
+    switch_requested = Signal()
     LABELS = {
-        "browse": "Browse",
-        "imports": "Imports",
-        "library": "Library",
+        "games": "Games",
+        "browse": "Browse mods",
+        "imports": "Import links",
+        "library": "Installed",
         "downloads": "Downloads",
         "settings": "Settings",
     }
@@ -99,13 +102,22 @@ class NavRail(QFrame):
         brand_lay.addWidget(self.brand_label, 1)
         outer.addWidget(brand)
 
+        self.switcher = QPushButton("Select a game")
+        self.switcher.setIcon(icons.icon("browse"))
+        self.switcher.setFixedHeight(40)
+        self.switcher.setAccessibleName("Switch game")
+        self.switcher.clicked.connect(self.switch_requested.emit)
+        outer.addWidget(self.switcher)
+        outer.addSpacing(16)
+
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._buttons: dict[str, NavButton] = {}
         for key, title, icon_name in (
-            ("browse", "Browse", "browse"),
-            ("imports", "Imports", "import"),
-            ("library", "Library", "stack"),
+            ("games", "Games", "browse"),
+            ("browse", "Browse mods", "search"),
+            ("imports", "Import links", "import"),
+            ("library", "Installed", "stack"),
             ("downloads", "Downloads", "transfer"),
         ):
             btn = NavButton(key, title, icon_name)
@@ -114,11 +126,13 @@ class NavRail(QFrame):
             self._group.addButton(btn)
             self._buttons[key] = btn
             outer.addWidget(btn)
+            if key == "imports":
+                btn.hide()
 
         self.spacer = QWidget()
         outer.addWidget(self.spacer, 1)
 
-        self.secondary_label = QLabel("Secondary")
+        self.secondary_label = QLabel("")
         self.secondary_label.setObjectName("navSection")
         outer.addWidget(self.secondary_label)
         self._settings_btn = NavButton("settings", "Settings", "settings")
@@ -128,7 +142,7 @@ class NavRail(QFrame):
         self._group.addButton(self._settings_btn)
         outer.addWidget(self._settings_btn)
 
-        self.hint = QLabel("Ctrl+F search\nCtrl+L Library\nCtrl+3 Downloads")
+        self.hint = QLabel("Ctrl+F  Find games\nCtrl+L  Installed")
         self.hint.setObjectName("navHint")
         self.hint.setWordWrap(True)
         outer.addSpacing(6)
@@ -193,6 +207,7 @@ class NavRail(QFrame):
     def set_compact(self, compact: bool) -> None:
         self._compact = compact
         self.setFixedWidth(RAIL_W if compact else WIDE_W)
+        self.switcher.setText("" if compact else self.fontMetrics().elidedText(getattr(self, "_game_name", "Select a game"), Qt.TextElideMode.ElideRight, 135))
         self.brand_label.setVisible(not compact)
         self.secondary_label.setVisible(not compact)
         self.hint.setVisible(not compact)
@@ -200,3 +215,8 @@ class NavRail(QFrame):
             btn.set_compact(compact)
         self._settings_btn.set_compact(compact)
         self._sync_library_button()
+
+    def set_game_context(self, game) -> None:
+        self._game_name = game.name if game else "Select a game"
+        self.switcher.setText("" if self._compact else self.fontMetrics().elidedText(self._game_name, Qt.TextElideMode.ElideRight, 135))
+        self.switcher.setToolTip(f"Switch game: {self._game_name}")

@@ -126,7 +126,6 @@ class StatusStrip(QFrame):
         sep.setStyleSheet(f"background: {theme.BORDER};")
         lay.addWidget(sep)
         lay.addWidget(self.queued_chip)
-        lay.addWidget(sep)
         lay.addWidget(self.failed_chip)
         lay.addStretch(1)
         lay.addWidget(self.hint)
@@ -150,16 +149,20 @@ class StatusStrip(QFrame):
         self.running_title = current
         self.progress_value = int(progress)
         self.spinner.set_running(running)
+        self.spinner.setVisible(running)
+        self.progress.setVisible(running)
         if active_count > 1:
             self.title.setText(f"{active_count} downloads active")
             self.message.setText(f"{current} · {message}" if current else message)
         else:
-            self.title.setText(current)
+            self.title.setText(current or "Downloads")
             self.message.setText(message)
         self.progress.setRange(0, 0 if running and progress <= 0 else 100)
         self.progress.setValue(int(progress))
         self.queued_chip.set_count(queued, "queued")
         self.failed_chip.set_count(failed, "failed")
+        self.queued_chip.setVisible(bool(queued))
+        self.failed_chip.setVisible(bool(failed))
         state = "downloading" if running else "idle"
         active_text = f" {active_count} active." if active_count > 1 else ""
         self.setAccessibleName(
@@ -181,7 +184,7 @@ class StatusStrip(QFrame):
             progress = float(running.progress or 0)
             message = f"{running.state.value} · {progress:.0f}%"
             self.update_state(
-                running.title, message, True, progress, queued, failed, len(live)
+                running.title, message, running.state is JobState.RUNNING, progress, queued, failed, len(live)
             )
         else:
             self.update_state("", "No active downloads.", False, 0.0, queued, failed)

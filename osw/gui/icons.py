@@ -60,7 +60,8 @@ def icon_svg(name: str, color: str | None = None) -> str:
 @lru_cache
 def _pixmap(name: str, color: str, size: int, square: int) -> QPixmap:
     renderer = QSvgRenderer(QByteArray(icon_svg(name, color).encode()))
-    img = QImage(square, square, QImage.Format.Format_ARGB32)
+    img = QImage(square * 2, square * 2, QImage.Format.Format_ARGB32)
+    img.setDevicePixelRatio(2)
     img.fill(Qt.GlobalColor.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
+    QSplitter,
     QTableView,
     QVBoxLayout,
     QWidget,
@@ -49,40 +51,55 @@ class ImportPage(QWidget):
 
         head = QVBoxLayout()
         head.setSpacing(2)
-        self.title = QLabel("Imports")
-        self.title.setStyleSheet("font-size: 19px; font-weight: 650;")
+        self.title = QLabel("Import links")
+        self.title.setStyleSheet("font-size: 23px; font-weight: 650;")
         self.subheader = QLabel("Paste Workshop item or collection links, or one item ID per line.")
         self.subheader.setStyleSheet("color: #98A3AF; font-size: 12.5px;")
         head.addWidget(self.title)
         head.addWidget(self.subheader)
         v.addLayout(head)
 
+        self.steps = QLabel("Paste or load   →   Resolve   →   Review   →   Download selected")
+        self.steps.setProperty("role", "muted")
+        v.addWidget(self.steps)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 16, 0)
+        lv.setSpacing(12)
+        source_label = QLabel("Workshop links or item IDs")
+        source_label.setProperty("role", "h2")
+        lv.addWidget(source_label)
         self.source = QPlainTextEdit()
         self.source.setObjectName("ImportSource")
         self.source.setPlaceholderText("https://steamcommunity.com/sharedfiles/filedetails/?id=…")
-        self.source.setMaximumHeight(130)
+        self.source.setMinimumHeight(130)
         self.source.setAccessibleName("Workshop references")
-        v.addWidget(self.source)
+        lv.addWidget(self.source)
 
-        options = QHBoxLayout()
-        self.file_button = QPushButton("Import text file…")
+        options = QVBoxLayout()
+        file_and_hint = QHBoxLayout()
+        self.file_button = QPushButton("Load text file…")
         self.file_button.clicked.connect(self._import_file)
-        options.addWidget(self.file_button)
-        options.addWidget(QLabel("Game ID hint"))
+        file_and_hint.addWidget(self.file_button)
         self.hint = QLineEdit()
-        self.hint.setPlaceholderText("Optional")
+        self.hint.setPlaceholderText("Game ID hint")
+        self.hint.setAccessibleName("Game ID hint")
+        self.hint.setToolTip("Only a hint. Steam determines which game owns each resolved item.")
         self.hint.setMaximumWidth(110)
-        options.addWidget(self.hint)
+        file_and_hint.addWidget(self.hint)
+        options.addLayout(file_and_hint)
         self.dependencies = QCheckBox("Include required items recursively")
+        self.dependencies.setToolTip("Resolve dependencies of every selected mod, including nested requirements.")
         options.addWidget(self.dependencies)
-        options.addStretch(1)
-        v.addLayout(options)
+
+        lv.addLayout(options)
 
         self.summary = QLabel()
         self.summary.setText("Resolve the list to preview downloads. No files are downloaded during preview.")
         self.summary.setWordWrap(True)
         self.summary.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12.5px;")
-        v.addWidget(self.summary)
+        lv.addWidget(self.summary)
 
         self.table = QTableView()
         self.tmodel = ImportPreviewModel(self)
@@ -101,13 +118,32 @@ class ImportPage(QWidget):
         self.table.setColumnWidth(2, 90)
         self.table.setColumnWidth(4, 92)
         self.table.setAccessibleName("Import preview")
-        v.addWidget(self.table, 1)
+        preview = QWidget()
+        pv = QVBoxLayout(preview)
+        pv.setContentsMargins(8, 0, 0, 0)
+        label = QLabel("Review downloads")
+        label.setProperty("role", "h2")
+        pv.addWidget(label)
+        pv.addWidget(self.table, 1)
 
         self.issues = QPlainTextEdit()
         self.issues.setReadOnly(True)
         self.issues.setMaximumHeight(96)
         self.issues.setPlaceholderText("Invalid entries and unresolved dependencies will be listed here.")
-        v.addWidget(self.issues)
+        self.issues.setAccessibleName("Import issues")
+        lv.addWidget(QLabel("Issues"))
+        lv.addWidget(self.issues)
+        lv.addStretch(1)
+        scroller = QScrollArea()
+        scroller.setWidgetResizable(True)
+        scroller.setMinimumWidth(280)
+        scroller.setWidget(left)
+        splitter.addWidget(scroller)
+        splitter.addWidget(preview)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([310, 650])
+        v.addWidget(splitter, 1)
 
         actions = QHBoxLayout()
         self.resolve_button = QPushButton("Resolve list")
@@ -118,7 +154,8 @@ class ImportPage(QWidget):
         self.cancel_button.clicked.connect(self._stop)
         actions.addWidget(self.cancel_button)
         actions.addStretch(1)
-        self.queue_button = QPushButton("Queue selected")
+        self.queue_button = QPushButton("Download selected")
+        self.queue_button.setProperty("role", "primary")
         self.queue_button.setAccessibleName("Queue checked mods for download")
         self.queue_button.setEnabled(False)
         self.queue_button.clicked.connect(self._queue_selected)
@@ -133,6 +170,7 @@ class ImportPage(QWidget):
 
     def set_source(self, text: str, *, hint: str, dependencies: bool, auto_resolve: bool = True) -> None:
         """Entry point prefill (paste, URL import, context menu, hero)."""
+        self._invalidate()
         self._loading = True
         self.hint.setText(hint)
         self.dependencies.setChecked(dependencies)

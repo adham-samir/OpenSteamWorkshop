@@ -8,7 +8,7 @@ without owning the game when its publisher allows them.
 
 - **Linux and Windows**, Python 3.10+
 - **No SteamCMD setup**: the app downloads and manages it for you
-- **Library and updates**: see what is installed and when mods have newer versions
+- **Installed mods and updates**: see what is installed and when mods have newer versions
 - **CLI included** (`osw`) for scripts and automation
 
 ---
@@ -135,13 +135,30 @@ folder (see **How it works**).
 ## Quick start
 
 1. Launch **OpenSteamWorkshop** from your app menu (Linux) or with `osw-gui`.
-2. Search for a game, open it, and browse its Workshop items.
-3. Pick a mod and click **Download**; progress appears in **Downloads**.
-4. Open **Library** to see installed mods; click **Check for updates** to find
-   newer versions, or **Cleanup** if duplicates are found.
+2. Open **Games**, search for a game, and browse its Workshop in **Browse mods**.
+3. Inspect a mod and click **Download**; follow progress in **Downloads**.
+4. Open **Installed** to search local mods, check updates, or review duplicates.
 
-The app has five workspaces: **Browse**, **Imports**, **Library**, **Downloads**
-and **Settings**, plus a status strip that follows active downloads.
+Use the game switcher to revisit pinned/recent games. Browse mods and Installed
+follow the selected game; Installed also offers **All games**. **Import links**
+in the global header accepts item/collection links and IDs for a reviewable
+preview. Imports and Downloads remain global when you switch games. Settings
+sits at the bottom of the navigation.
+
+Cards/list preference is remembered across launches; each game's search, sort,
+page, artwork, scroll, and selection stay available during the current session.
+Details open beside results in wide windows and as a dismissible page in smaller
+ones. The persistent transfer strip opens Downloads from any workspace.
+
+![Native OpenSteamWorkshop Browse mods workspace](docs/screenshots/1440x900-browse.png)
+
+This native desktop capture uses illustrative counts and queue data. See the
+[screenshot gallery and capture instructions](docs/screenshots/README.md) for more
+states and artwork attribution.
+
+Keyboard shortcuts: **Ctrl+F** Games search, **Ctrl+1** Browse mods, **Ctrl+2**
+Import links, **Ctrl+3** Downloads, **Ctrl+4** Settings, **Ctrl+L** Installed,
+and **/** Workshop search while browsing. **Escape** closes item details.
 
 ## Features
 
@@ -163,7 +180,7 @@ and **Settings**, plus a status strip that follows active downloads.
   batch with **Update all**.
 - **Already-installed protection**: the app asks before re-downloading a mod;
   the CLI skips installed items unless you pass `--reinstall`.
-- **Recent and pinned games** on the Browse landing page.
+- **Recent and pinned games** in Games and the searchable game switcher.
 
 ## Command line
 
@@ -210,19 +227,19 @@ osw desktop-uninstall
 
 **Where mods go.** By default, downloads land in
 `<mods root>/steamapps/workshop/content/<appid>/<itemid>/`, with the mods root
-defaulting to `~/SteamMods`. To deliver into a game's own folder, open **Browse**
+defaulting to `~/SteamMods`. To deliver into a game's own folder, open **Browse mods**
 → game header → **Mods folder → Change…**. Finished items are moved to
 `<chosen folder>/<Item title>/` and get a hidden `.opensteamworkshop.json`
 marker. **Clear (use default)** restores the default root.
 
 **Queue and settings.** The GUI queue is saved to
 `~/.config/OpenSteamWorkshop/queue.json` and restored as interrupted work after
-a restart; choose **Resume unfinished** to continue. Pinned games and per-game
-folders live in `state.json` next to it. The same `.config/OpenSteamWorkshop`
+a restart; choose **Resume interrupted** to continue. Pinned games and per-game
+folders and the optional cards/list preference live in `state.json` next to it. The same `.config/OpenSteamWorkshop`
 folder is used on Windows (`C:\Users\<you>\.config\OpenSteamWorkshop`).
 Changing Settings affects new jobs only; queued jobs keep their destination.
 
-**Parallel downloads.** **Settings → Parallel downloads** (or `--parallel N`)
+**Parallel downloads.** **Settings → Downloads → Concurrent games** (or `--parallel N`)
 runs up to three jobs at a time. Extra workers use sibling workspaces such as
 `steamcmd-w1`/`steamcmd-w2`, created automatically. Different games can run
 together; two items from the same game still take turns so SteamCMD's
@@ -231,16 +248,17 @@ workers; lower it to 1 in Settings or with `--parallel 1`.
 
 **Duplicates.** If an item exists both in the default tree and in a per-game
 folder, the delivered copy is the live one and the default copy is leftover.
-**Library → Cleanup (N)** lists these and pre-ticks the safe default copies;
+**Installed → Cleanup (N)** lists these and pre-ticks the safe default copies;
 you can untick anything or choose between two delivered copies. The CLI's
 `osw cleanup` reports the same groups, and `--prune` deletes only the safe
 recommendation, never an ambiguous one.
 
-**Updates.** The Library compares each installed item with Steam's latest public
+**Updates.** Installed compares each installed item with Steam's latest public
 revision. Default-folder items use SteamCMD's `appworkshop_<appid>.acf`;
 delivered items use the revision recorded in their marker. Outdated rows show
 **Update available**; **Update** re-downloads in place, and **Update all** lets
-you untick items before queueing. Items with no recorded revision are shown as
+you untick items before queueing. Update checks, bulk updates, and duplicate cleanup follow the displayed
+Installed scope and filters. Open mods folder opens the default mods root. Items with no recorded revision are shown as
 **Version unknown** instead of being guessed at.
 
 ## Anonymous access and accounts

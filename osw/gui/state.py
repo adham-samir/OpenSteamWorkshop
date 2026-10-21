@@ -73,6 +73,7 @@ class AppState:
         self.favorites: list[Game] = []
         self.game_paths: dict[int, Path] = {}
         self.last_update_check = 0.0
+        self.browse_presentation = "cards"
         self.load()
 
     @property
@@ -89,6 +90,7 @@ class AppState:
         self.recent = _games(raw.get("recent"))[:RECENT_LIMIT]
         self.favorites = _games(raw.get("favorites"))
         self.game_paths = _game_paths(raw.get("game_paths"))
+        self.browse_presentation = "list" if raw.get("browse_presentation") == "list" else "cards"
         try:
             self.last_update_check = max(0.0, float(raw.get("last_update_check") or 0))
         except (TypeError, ValueError):
@@ -99,6 +101,7 @@ class AppState:
             self.path,
             {
                 "version": 1,
+                "browse_presentation": self.browse_presentation,
                 "recent": [self._plain(g) for g in self.recent],
                 "favorites": [self._plain(g) for g in self.favorites],
                 "game_paths": {
@@ -167,6 +170,10 @@ class AppState:
 
     def mark_updates_checked(self, when: float | None = None) -> None:
         self.last_update_check = float(time.time() if when is None else when)
+        self._save_if_needed()
+
+    def set_browse_presentation(self, presentation: str) -> None:
+        self.browse_presentation = "list" if presentation == "list" else "cards"
         self._save_if_needed()
 
     def favorite_games(self) -> list[Game]:
