@@ -1,7 +1,7 @@
 # OpenWorkshop
 
 A desktop GUI for Valve's SteamCMD on Linux and Windows. Browse and download
-Steam Workshop mods without owning or installing the game.
+Steam Workshop mods without owning the game on Steam.
 
 ![OpenWorkshop browsing a game's Workshop](docs/screenshots/openworkshop-browse.png)
 
@@ -16,7 +16,7 @@ desktop interface:
 
 - Browse a game's Workshop visually instead of typing SteamCMD commands
 - Download individual mods or entire collections with a visible queue
-- Works without owning or installing the game when the publisher allows it
+- Works without owning the game when the publisher allows it
 - Sets up and manages SteamCMD for you
 
 Some Workshop content still requires a Steam account with access to the game.
