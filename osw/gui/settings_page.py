@@ -25,9 +25,13 @@ class SettingsPage(QWidget):
 
     save_requested = Signal(str, str, str, str, str)
     # content_root, username, use_account(bool→str), password, steamcmd_dir
+    desktop_install_requested = Signal()
+    desktop_uninstall_requested = Signal()
 
     def __init__(self):
         super().__init__()
+        self._desktop_installed = False
+        self._desktop_available = True
         v = QVBoxLayout(self)
         v.setContentsMargins(18, 14, 18, 12)
         v.setSpacing(10)
@@ -80,6 +84,22 @@ class SettingsPage(QWidget):
         self.steamcmd_edit.setPlaceholderText("Empty = automatically managed SteamCMD")
         self.steamcmd_edit.setAccessibleName("SteamCMD folder")
         self.form.addRow("SteamCMD folder", self.steamcmd_edit)
+
+        menu_row = QHBoxLayout()
+        menu_row.setSpacing(8)
+        self.desktop_status = QLabel("Not installed.")
+        self.desktop_status.setStyleSheet(f"color: {theme.TEXT2}; font-size: 12px;")
+        self.desktop_status.setWordWrap(True)
+        self.desktop_btn = QPushButton("Add to app menu")
+        self.desktop_btn.setAccessibleName(
+            "Add OpenSteamWorkshop to the application menu"
+        )
+        self.desktop_btn.clicked.connect(self._toggle_desktop)
+        menu_row.addWidget(self.desktop_status, 1)
+        menu_row.addWidget(self.desktop_btn)
+        menu_holder = QFrame()
+        menu_holder.setLayout(menu_row)
+        self.form.addRow("Application menu", menu_holder)
 
         v.addWidget(form_wrap)
 
@@ -136,6 +156,37 @@ class SettingsPage(QWidget):
         chosen = QFileDialog.getExistingDirectory(self, "Choose mods root folder")
         if chosen:
             self.root_edit.setText(chosen)
+
+    def set_desktop_available(self, available: bool) -> None:
+        self._desktop_available = bool(available)
+        self.desktop_btn.setVisible(self._desktop_available)
+        self.set_desktop_installed(self._desktop_installed)
+
+    def set_desktop_installed(self, installed: bool) -> None:
+        self._desktop_installed = bool(installed)
+        if not self._desktop_available:
+            self.desktop_status.setText("Only available on Linux.")
+            return
+        if self._desktop_installed:
+            self.desktop_status.setText(
+                "Installed — search for OpenSteamWorkshop in your app menu."
+            )
+            self.desktop_btn.setText("Remove from app menu")
+            self.desktop_btn.setAccessibleName(
+                "Remove OpenSteamWorkshop from the application menu"
+            )
+        else:
+            self.desktop_status.setText("Not in the application menu.")
+            self.desktop_btn.setText("Add to app menu")
+            self.desktop_btn.setAccessibleName(
+                "Add OpenSteamWorkshop to the application menu"
+            )
+
+    def _toggle_desktop(self) -> None:
+        if self._desktop_installed:
+            self.desktop_uninstall_requested.emit()
+        else:
+            self.desktop_install_requested.emit()
 
     def _emit_save(self) -> None:
         content_root, username, use_account, password, steamcmd = self.values()

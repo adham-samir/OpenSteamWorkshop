@@ -1,0 +1,39 @@
+name: Publish
+
+# Publishes to PyPI using trusted publishing. Run it manually from the Actions
+# tab after the PyPI pending publisher exists. Once configured, also add
+#   release:
+#     types: [published]
+# under `on:` to publish every v* release automatically.
+#
+# One-time setup: add a pending publisher on PyPI for
+#   project: opensteamworkshop
+#   owner:   adham-samir
+#   repo:    OpenSteamWorkshop
+#   workflow: publish.yml
+#   environment: pypi
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/opensteamworkshop
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

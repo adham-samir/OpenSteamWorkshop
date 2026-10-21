@@ -50,12 +50,38 @@ strip.
 
 ## Install
 
+**Linux, no root.** The one-liner installs the latest GitHub release into
+`~/.local/share/opensteamworkshop`, links `osw` / `osw-gui` into
+`~/.local/bin`, and adds **OpenSteamWorkshop** to your application menu:
+
 ```bash
-python -m venv --system-site-packages .venv   # recommended
+curl -fsSL https://raw.githubusercontent.com/adham-samir/OpenSteamWorkshop/main/install.sh | bash
+```
+
+Search for OpenSteamWorkshop in your app menu after installing. Remove it with
+the repository's `uninstall.sh`; your settings, download queue and mods are
+left untouched.
+
+**pipx or pip.** Install the released wheel directly until the PyPI listing is
+live:
+
+```bash
+pipx install https://github.com/adham-samir/OpenSteamWorkshop/releases/download/v0.5.0/opensteamworkshop-0.5.0-py3-none-any.whl
+osw desktop-install   # optional: add the app-menu entry
+```
+
+From a source checkout:
+
+```bash
+python -m venv --system-site-packages .venv
 source .venv/bin/activate       # bash / zsh
 source .venv/bin/activate.fish  # fish
 pip install -e .                # GUI + CLI
+osw desktop-install             # optional: add the app-menu entry
 ```
+
+On Windows, install the wheel from the Releases page; the application-menu
+integration is Linux-only for now.
 
 ## Run
 
@@ -63,6 +89,9 @@ pip install -e .                # GUI + CLI
 osw-gui        # desktop app (PySide6)
 python main.py # same thing
 ```
+
+`osw desktop-uninstall` removes the application-menu entry again (or use
+**Settings → Application menu**).
 
 CLI:
 
@@ -78,6 +107,7 @@ osw batch --input workshop-links.txt --with-dependencies --out ~/SteamMods
 # Check installed mods for newer Workshop revisions, or fetch them all:
 osw updates 108600
 osw updates 108600 --apply
+osw desktop-install / osw desktop-uninstall   # Linux app-menu entry
 # Already-installed items are skipped; --reinstall downloads them again:
 osw download 108600 3820938264 --reinstall
 # Optional account fallback (password and Steam Guard are prompted when needed):

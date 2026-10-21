@@ -49,6 +49,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..desktop import (
+    desktop_supported,
+    entry_installed,
+    install_desktop_entry,
+    uninstall_desktop_entry,
+)
 from ..models import Game, ItemDetails, WorkshopItem, fmt_count
 from ..queue import ACTIVE, DownloadManager, JobSnapshot, JobState
 from ..settings import CONFIG_DIR, get, save
@@ -490,6 +496,16 @@ class MainWindow(QMainWindow):
 
     def _wire_settings(self) -> None:
         self.settings_page.save_requested.connect(self._save_settings)
+        self.settings_page.desktop_install_requested.connect(
+            self._install_desktop_entry
+        )
+        self.settings_page.desktop_uninstall_requested.connect(
+            self._remove_desktop_entry
+        )
+        self.settings_page.set_desktop_available(desktop_supported())
+        self.settings_page.set_desktop_installed(
+            desktop_supported() and entry_installed()
+        )
 
     def _wire_inspector(self) -> None:
         inspector = self.browse.inspector
@@ -1605,6 +1621,34 @@ class MainWindow(QMainWindow):
         self.settings_page.confirm_saved()
         self.statusBar().showMessage("Settings saved", 5000)
 
+    def _install_desktop_entry(self) -> None:
+        try:
+            install_desktop_entry()
+        except OSError as exc:
+            self.settings_page.show_error(
+                f"Could not add to the application menu: {exc}"
+            )
+            return
+        self.settings_page.set_desktop_installed(True)
+        self.settings_page.confirm_saved("Added to the application menu")
+        self.statusBar().showMessage(
+            "Added OpenSteamWorkshop to the application menu", 5000
+        )
+
+    def _remove_desktop_entry(self) -> None:
+        try:
+            uninstall_desktop_entry()
+        except OSError as exc:
+            self.settings_page.show_error(
+                f"Could not remove the application-menu entry: {exc}"
+            )
+            return
+        self.settings_page.set_desktop_installed(False)
+        self.settings_page.confirm_saved("Removed from the application menu")
+        self.statusBar().showMessage(
+            "Removed OpenSteamWorkshop from the application menu", 5000
+        )
+
     # ------------------------------------------------------------------ misc
 
     def closeEvent(self, event):  # noqa: N802
@@ -1624,6 +1668,7 @@ class MainWindow(QMainWindow):
 def run() -> int:
     app = QApplication.instance() or QApplication([])
     app.setApplicationName("OpenSteamWorkshop")
+    app.setDesktopFileName("opensteamworkshop")
     app.setStyle("Fusion")
     theme.apply_theme()
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)

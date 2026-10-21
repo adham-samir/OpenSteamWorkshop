@@ -11,6 +11,12 @@ from pathlib import Path
 
 from . import __version__
 from .bulk import resolve_downloads
+from .desktop import (
+    desktop_supported,
+    entry_text,
+    install_desktop_entry,
+    uninstall_desktop_entry,
+)
 from .installed import InstalledIndex, check_updates
 from .models import WorkshopItem
 from .net import NetError
@@ -211,6 +217,38 @@ def _run_jobs(manager, jobs, had_issues=False):
     return EXIT_ERR if failures or had_issues else EXIT_OK
 
 
+def cmd_desktop_install(args) -> int:
+    if not desktop_supported():
+        _p("Application-menu integration is only available on Linux.")
+        return EXIT_ERR
+    if args.print_entry:
+        print(entry_text())
+        return EXIT_OK
+    entry, icon = install_desktop_entry()
+    _p("Installed the OpenSteamWorkshop application-menu entry:")
+    _p(f"  {entry}")
+    _p(f"  {icon}")
+    _p(
+        "Search for OpenSteamWorkshop in your application menu; "
+        "log out and back in if it is not there yet."
+    )
+    return EXIT_OK
+
+
+def cmd_desktop_uninstall(args) -> int:
+    if not desktop_supported():
+        _p("Application-menu integration is only available on Linux.")
+        return EXIT_ERR
+    removed = uninstall_desktop_entry()
+    if not removed:
+        _p("No application-menu entry was installed.")
+        return EXIT_OK
+    _p("Removed the application-menu entry:")
+    for path in removed:
+        _p(f"  {path}")
+    return EXIT_OK
+
+
 def cmd_updates(args):
     root = Path(args.out or get("content_root"))
     index = _installed_index(root)
@@ -394,6 +432,22 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--username", default=None, help="steam username (anonymous if omitted)")
     up.add_argument("--anonymous", action="store_true", help="force anonymous login")
     up.set_defaults(func=cmd_updates)
+
+    di = sub.add_parser(
+        "desktop-install", help="add the app to the Linux application menu"
+    )
+    di.add_argument(
+        "--print",
+        dest="print_entry",
+        action="store_true",
+        help="print the launcher entry without installing it",
+    )
+    di.set_defaults(func=cmd_desktop_install)
+
+    du = sub.add_parser(
+        "desktop-uninstall", help="remove the Linux application-menu entry"
+    )
+    du.set_defaults(func=cmd_desktop_uninstall)
 
     u = sub.add_parser("url", help="parse a pasted steam URL into ids")
     u.add_argument("text", nargs="+")

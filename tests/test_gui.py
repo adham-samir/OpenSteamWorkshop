@@ -1325,3 +1325,51 @@ def test_update_all_cancelled_dialog_queues_nothing(window, tmp_path, monkeypatc
     window._update_all()
 
     assert len(window.manager.jobs) == before
+
+
+def test_settings_desktop_toggle_states(window):
+    page = window.settings_page
+
+    page.set_desktop_available(True)
+    page.set_desktop_installed(False)
+    assert page.desktop_btn.text() == "Add to app menu"
+    assert "Not in" in page.desktop_status.text()
+
+    page.set_desktop_installed(True)
+    assert page.desktop_btn.text() == "Remove from app menu"
+    assert "Installed" in page.desktop_status.text()
+
+    page.set_desktop_available(False)
+    assert page.desktop_btn.isHidden()
+    assert "Linux" in page.desktop_status.text()
+
+
+def test_window_installs_and_removes_desktop_entry(window, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "osw.gui.main_window.install_desktop_entry",
+        lambda: calls.append("install") or (Path("/entry"), Path("/icon")),
+    )
+    monkeypatch.setattr(
+        "osw.gui.main_window.uninstall_desktop_entry",
+        lambda: calls.append("remove") or [],
+    )
+
+    window._install_desktop_entry()
+    assert calls == ["install"]
+    assert window.settings_page.desktop_btn.text() == "Remove from app menu"
+
+    window._remove_desktop_entry()
+    assert calls == ["install", "remove"]
+    assert window.settings_page.desktop_btn.text() == "Add to app menu"
+
+
+def test_window_desktop_install_error_is_reported(window, monkeypatch):
+    def denied():
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("osw.gui.main_window.install_desktop_entry", denied)
+
+    window._install_desktop_entry()
+
+    assert "permission denied" in window.settings_page.saved_label.text()
