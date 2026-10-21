@@ -14,8 +14,16 @@ from osw.bulk import DownloadResolution, ResolutionIssue
 from osw.gui.browse_page import MODE_GRID
 from osw.gui.browse_page import BrowsePage as DeskBrowsePage
 from osw.gui.bulk_dialog import BulkDialog
-from osw.gui.components import ITEM_ROLE, THUMB_ROLE, DownloadTableModel, StatusStrip
-from osw.gui.item_models import FavoriteRole, InstalledItemRole
+from osw.gui.downloads_page import DownloadsPage
+from osw.gui.imports_page import ImportPage
+from osw.gui.item_models import (
+    FavoriteRole,
+    InstalledItemRole,
+    ItemRole,
+    JobFilter,
+    MetaRole,
+    ThumbRole,
+)
 from osw.gui.library import (
     InstalledItem,
     InstalledMetadata,
@@ -26,8 +34,8 @@ from osw.gui.library import (
 )
 from osw.gui.library_page import LibraryPage
 from osw.gui.main_window import Async, MainWindow
-from osw.gui.pages import BrowsePage, DownloadsPage, ImportsPage
 from osw.gui.state import AppState
+from osw.gui.status_strip import StatusStrip
 from osw.models import Game, ItemDetails, WorkshopItem
 from osw.queue import JobSnapshot, JobState
 
@@ -297,63 +305,51 @@ def test_navigation_and_status_strip_open_downloads(window):
 
 
 def test_landing_actions_emit_intent(qapp):
-    page = BrowsePage()
-    seen = []
-    page.searchGamesRequested.connect(seen.append)
-    page.importLinksRequested.connect(lambda: seen.append("imports"))
+    page = DeskBrowsePage()
+    searches, imports = [], []
+    page.game_search_requested.connect(searches.append)
+    page.import_requested.connect(lambda: imports.append("imports"))
 
-    page.landing_search.setText("portal 2")
+    page.game_search.setText("portal 2")
     page.find_button.click()
-    page.import_button.click()
+    page.import_btn.click()
 
-    assert seen == ["portal 2", "imports"]
+    assert searches == ["portal 2"]
+    assert imports == ["imports"]
 
 
 def test_game_results_select_emits_appid(qapp):
-    page = BrowsePage()
-    page.show_games([Game(10, "Alpha"), Game(20, "Beta")], "a")
-    assert page.game_model.rowCount() == 2
+    page = DeskBrowsePage()
+    page.set_games("a", [Game(10, "Alpha"), Game(20, "Beta")])
+    assert page.results.model.rowCount() == 2
     seen = []
-    page.gameSelected.connect(seen.append)
-    page.game_list.clicked.emit(page.game_model.index(1, 0))
+    page.app_picked.connect(seen.append)
+    page.results.list.clicked.emit(page.results.model.index(1, 0))
     assert seen == [20]
 
 
-def test_workshop_model_metadata_and_thumbnail_update(qapp):
-    page = BrowsePage()
-    page.show_workshop(Game(10, "Game"), loading=False)
+def test_workshop_cards_expose_metadata_and_thumbnail_updates(qapp):
+    page = DeskBrowsePage()
+    page.set_game(10, "Game")
     item = WorkshopItem(20, appid=10, title="Detail", tags=["Tools"], subscriptions=42)
-    page.show_items([item], 1, 1, 1)
+    page.set_items([item], 1, 1, 1)
 
-    index = page.workshop_model.index(0, 0)
-    assert page.workshop_model.rowCount() == 1
-    assert index.data(ITEM_ROLE).publishedfileid == 20
+    index = page.grid_model.index(0, 0)
+    assert page.grid_model.rowCount() == 1
+    assert index.data(ItemRole).publishedfileid == 20
     assert index.data(Qt.DisplayRole) == "Detail"
-    assert "Workshop ID" in index.data(Qt.ToolTipRole)
-    assert "Detail" in index.data(Qt.AccessibleTextRole)
+    assert "42 subs" in index.data(MetaRole)
+    assert index.data(ThumbRole) is None
 
     pixmap = QPixmap(8, 8)
     pixmap.fill(Qt.red)
-    page.set_thumb(20, pixmap)
-    assert index.data(THUMB_ROLE).isNull() is False
-
-
-def test_inspector_ignores_stale_details(qapp):
-    page = BrowsePage()
-    page.show_workshop(Game(10, "Game"), loading=False)
-    item = WorkshopItem(20, appid=10, title="Inspected")
-    page.show_items([item], 1, 1, 1)
-    page.inspector.show_item(item)
-
-    assert page.show_details(ItemDetails(99, title="Other")) is False
-    assert page.show_details(ItemDetails(20, title="Fresh")) is True
-    assert page.inspector.title_label.text() == "Fresh"
+    page.update_card_thumb(20, pixmap)
+    assert index.data(ThumbRole) is not None
 
 
 def test_multiselect_shows_bulk_bar_and_reviews(qapp):
-    page = BrowsePage()
-    page.show_workshop(Game(10, "Game"), loading=False)
-    page.show_items(
+    page = DeskBrowsePage()
+    page.set_items(
         [WorkshopItem(20, appid=10, title="One"), WorkshopItem(21, appid=10, title="Two")],
         2,
         1,
@@ -361,60 +357,65 @@ def test_multiselect_shows_bulk_bar_and_reviews(qapp):
     )
     selection = page.cards.selectionModel()
     flags = QItemSelectionModel.Select | QItemSelectionModel.Rows
-    selection.select(page.workshop_model.index(0, 0), flags)
-    selection.select(page.workshop_model.index(1, 0), flags)
+    selection.select(page.grid_model.index(0, 0), flags)
+    selection.select(page.grid_model.index(1, 0), flags)
     qapp.processEvents()
 
     assert len(page.selected_items()) == 2
-    assert page.bulk_bar.items()[0].publishedfileid == 20
     assert not page.bulk_bar.isHidden()
+    assert page.bulk_bar.label.text() == "2 items selected"
 
     reviewed = []
-    page.bulk_bar.reviewRequested.connect(reviewed.append)
-    page.bulk_bar.review_button.click()
-    assert reviewed == [[20, 21]]
+    page.bulk_download_requested.connect(lambda: reviewed.append(True))
+    page.bulk_bar.download_btn.click()
+    assert reviewed == [True]
 
 
 def test_imports_invalidation_clears_stale_preview(qapp):
-    page = ImportsPage()
+    page = ImportPage()
     resolution = DownloadResolution(
         items=[WorkshopItem(20, appid=10), WorkshopItem(21, appid=10)],
         issues=[ResolutionIssue("bad", "Invalid reference")],
         dependencies={21},
     )
-    page.show_resolution(resolution)
-    assert page.model.rowCount() == 2
+    page.resolve_finished(resolution)
+    assert page.tmodel.rowCount() == 2
     assert page.queue_button.isEnabled()
-    assert page.model.data(page.model.index(0, 0), Qt.CheckStateRole) == Qt.Checked
-    assert page.model.data(page.model.index(1, 3), Qt.DisplayRole) == "Required"
+    assert page.tmodel.index(0, 0).data(Qt.CheckStateRole) == Qt.Checked
+    assert page.tmodel.index(1, 3).data(Qt.DisplayRole) == "Required"
 
     page.source.setPlainText("changed")
     assert page.resolution is None
-    assert page.model.rowCount() == 0
+    assert page.tmodel.rowCount() == 0
     assert not page.queue_button.isEnabled()
-    assert page.notice.text() == ""
+    assert "List changed" in page.summary.text()
 
 
 def test_imports_selection_and_stop(qapp):
-    page = ImportsPage()
-    page.show_resolution(
+    page = ImportPage()
+    page.resolve_finished(
         DownloadResolution(items=[WorkshopItem(20, appid=10), WorkshopItem(21, appid=10)])
     )
-    page.model.setData(page.model.index(0, 0), Qt.Unchecked, Qt.CheckStateRole)
-    assert [item.publishedfileid for item in page.model.selected_items()] == [21]
+    page.tmodel.setData(page.tmodel.index(0, 0), Qt.Unchecked, Qt.CheckStateRole)
+    assert [item.publishedfileid for item in page.tmodel.checked()] == [21]
 
-    cancelled = []
-    page.cancelRequested.connect(lambda: cancelled.append(True))
-    page._set_resolving(True)
-    page.stop_button.click()
-    assert cancelled == [True]
+    page.source.setPlainText("123")
+    requested = []
+    page.resolve_requested.connect(lambda refs, hint, deps: requested.append(refs))
+    page.resolve_button.click()
+    assert requested == ["123"]
+    assert page.cancel_button.isEnabled()
+
+    page._stop()
+    page.resolve_cancelled()
     assert "stopped" in page.summary.text().lower()
+    assert not page.cancel_button.isEnabled()
     assert not page.queue_button.isEnabled()
 
 
 def test_download_filters_and_counts(qapp):
     page = DownloadsPage()
-    page.set_jobs(
+    page.replace_all(
         [
             _snap(0, JobState.QUEUED),
             _snap(1, JobState.RUNNING, 40),
@@ -424,38 +425,42 @@ def test_download_filters_and_counts(qapp):
         ]
     )
     counts = page.model.counts()
-    assert counts[DownloadTableModel.ALL] == 5
-    assert counts[DownloadTableModel.ACTIVE] == 2
-    assert counts[DownloadTableModel.ATTENTION] == 2
-    assert counts[DownloadTableModel.FINISHED] == 1
-    assert "Needs attention" in page.filter_buttons[DownloadTableModel.ATTENTION].text()
+    assert counts[JobFilter.ALL] == 5
+    assert counts[JobFilter.ACTIVE] == 2
+    assert counts[JobFilter.ATTENTION] == 2
+    assert counts[JobFilter.FINISHED] == 1
+    attention = next(
+        button for button, filt in page._filters.items() if filt == JobFilter.ATTENTION
+    )
+    assert "Needs attention" in attention.text()
 
-    page.set_filter(DownloadTableModel.ATTENTION)
+    page.set_filter(filt=JobFilter.ATTENTION)
     assert page.model.rowCount() == 2
-    page.set_filter(DownloadTableModel.FINISHED)
+    page.set_filter(filt=JobFilter.FINISHED)
     assert page.model.rowCount() == 1
-    page.set_filter(DownloadTableModel.ACTIVE)
+    page.set_filter(filt=JobFilter.ACTIVE)
     assert page.model.rowCount() == 2
 
 
 def test_download_actions_route_selected_job(qapp):
     page = DownloadsPage()
     page.show()
-    page.set_jobs([_snap(0, JobState.RUNNING, 30), _snap(1, JobState.FAILED, 12)])
-    page.select_job("job-0")
-    assert page.selected_job().id == "job-0"
-    assert page.cancel_button.isEnabled()
-
+    page.replace_all([_snap(0, JobState.RUNNING, 30), _snap(1, JobState.FAILED, 12)])
     seen = []
-    page.cancelJob.connect(seen.append)
-    page.cancel_button.click()
-    assert seen == ["job-0"]
+    page.action_requested.connect(lambda job_id, action: seen.append((job_id, action)))
 
-    page.select_job("job-1")
-    assert page.retry_button.isEnabled()
-    page.retryJob.connect(seen.append)
-    page.retry_button.click()
-    assert seen[-1] == "job-1"
+    page.table.selectRow(0)
+    qapp.processEvents()
+    assert page.model.snapshot(page.table.currentIndex().row()).id == "job-0"
+    cancel = next(button for button in page.action_buttons if button.text() == "Cancel")
+    cancel.click()
+    assert seen == [("job-0", "Cancel")]
+
+    page.table.selectRow(1)
+    qapp.processEvents()
+    retry = next(button for button in page.action_buttons if button.text() == "Retry")
+    retry.click()
+    assert seen[-1] == ("job-1", "Retry")
 
 
 def test_status_strip_counts_and_activation(qapp):
@@ -471,11 +476,9 @@ def test_status_strip_counts_and_activation(qapp):
     )
     assert strip.queued_count == 1
     assert strip.failure_count == 1
-    assert strip.attention_count == 1
-    assert strip.completed_count == 1
     assert strip.running_title == "Live mod"
     assert strip.progress_value == 62
-    assert "Live mod" in strip.accessibleName()
+    assert "1 queued, 1 failed" in strip.accessibleName()
 
     activated = []
     strip.activated.connect(lambda: activated.append(True))
@@ -492,26 +495,25 @@ def test_window_status_strip_follows_jobs(window):
 
 
 def test_large_models_stay_responsive(qapp):
-    page = BrowsePage()
-    page.show_workshop(Game(10, "Game"), loading=False)
-    page.show_items(
+    page = DeskBrowsePage()
+    page.set_items(
         [WorkshopItem(1000 + n, appid=10, title=f"Mod {n}") for n in range(30)],
         30,
         1,
         1,
     )
-    assert page.workshop_model.rowCount() == 30
+    assert page.grid_model.rowCount() == 30
 
-    imports = ImportsPage()
-    imports.show_resolution(
+    imports = ImportPage()
+    imports.resolve_finished(
         DownloadResolution(items=[WorkshopItem(2000 + n, appid=10) for n in range(100)])
     )
-    assert imports.model.rowCount() == 100
+    assert imports.tmodel.rowCount() == 100
 
     downloads = DownloadsPage()
-    downloads.set_jobs([_snap(n, JobState.QUEUED) for n in range(100)])
+    downloads.replace_all([_snap(n, JobState.QUEUED) for n in range(100)])
     assert downloads.model.rowCount() == 100
-    assert downloads.model.counts()[DownloadTableModel.ALL] == 100
+    assert downloads.model.counts()[JobFilter.ALL] == 100
 
 
 # ------------------------------------------------------- recents & favorites

@@ -238,9 +238,11 @@ class ImportPreviewModel(QAbstractTableModel):
 
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
         if role == Qt.ItemDataRole.CheckStateRole and index.column() == 0:
-            self._rows[index.row()][0] = bool(
-                value in (True, Qt.CheckState.Checked) or int(value) > 0
-            )
+            if isinstance(value, Qt.CheckState):
+                include = value == Qt.CheckState.Checked
+            else:
+                include = bool(value)
+            self._rows[index.row()][0] = include
             self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
             return True
         return False
